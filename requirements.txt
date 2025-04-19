@@ -4,4 +4,5 @@ keyboard==0.13.5
 pyperclip==1.8.2
 numpy
 pyinstaller==6.1.0
-pywin32==306
+sounddevice
+wave
