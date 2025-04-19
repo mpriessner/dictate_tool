@@ -6,3 +6,5 @@ numpy
 pyinstaller==6.1.0
 sounddevice
 wave
+python-dotenv
+pyautogui

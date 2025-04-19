@@ -1,3 +1,9 @@
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 import sys
 import sounddevice as sd
 import wave
@@ -10,7 +16,9 @@ import pyperclip
 import numpy as np
 import time
 from pynput import keyboard
+from pynput.keyboard import Controller, Key
 import subprocess
+import pyautogui
 
 class DictateWindow(QMainWindow):
     def __init__(self):
@@ -109,7 +117,7 @@ class DictateWindow(QMainWindow):
             # Small delay to ensure we have the right window
             time.sleep(0.1)
             
-            # Stop the timer and paste
+            # Stop the timer
             self.countdown_timer.stop()
             
             # Hide the app window temporarily to ensure focus goes to the underlying application
@@ -128,13 +136,22 @@ class DictateWindow(QMainWindow):
     def paste_text(self):
         """Paste the text"""
         try:
-            # Use pynput to simulate cmd+v keystroke
-            kb_controller = keyboard.Controller()
+            # Use pynput to simulate keystrokes
+            # kb_controller = keyboard.Controller()
             
             # First, ensure we're properly focused on the target application
             time.sleep(0.2)  # Give time for focus to settle
-            
-            # Paste using cmd+v
+
+            # Simulate two backspaces using pynput
+            kb_controller = keyboard.Controller()
+            kb_controller.press(Key.backspace)
+            kb_controller.release(Key.backspace)
+            time.sleep(0.05) # Small delay between backspaces
+            kb_controller.press(Key.backspace)
+            kb_controller.release(Key.backspace)
+            time.sleep(0.1) # Delay before pasting
+
+            # Paste using pynput cmd+v
             with kb_controller.pressed(keyboard.Key.cmd):
                 kb_controller.press('v')
                 kb_controller.release('v')
@@ -222,21 +239,18 @@ class DictateWindow(QMainWindow):
                 # Copy to clipboard
                 pyperclip.copy(self.transcribed_text)
                 
-                if was_from_hotkey:
-                    # For hotkey, paste immediately without any delays
-                    print("Hotkey used - pasting immediately")
-                    self.status_label.setText("Pasting...")
-                    # Hide window temporarily to ensure focus goes to the underlying app
-                    self.hide()
-                    time.sleep(0.2)  # Give time for focus to shift
-                    self.paste_text()
-                    self.show()
-                else:
-                    # For button press, use the 1-second delay
-                    print("Button press - starting countdown")
-                    self.status_label.setText("Click where you want to paste! 1 second...")
-                    self.countdown_timer.start(1000)
-                
+                # --- Insert text at cursor position using Paste shortcut ---
+                if self.transcribed_text:
+                    print("Simulating Cmd+V to paste transcription.")
+                    keyboard_controller = Controller()
+                    # Brief pause to allow focus switch if needed
+                    time.sleep(0.2) 
+                    with keyboard_controller.pressed(Key.cmd):
+                        keyboard_controller.press('v')
+                        keyboard_controller.release('v')
+                    print("Paste simulation complete.")
+                # ---------------------------------------
+
             except openai.error.AuthenticationError:
                 error_msg = "OpenAI API key is invalid"
                 print(f"Error: {error_msg}")
