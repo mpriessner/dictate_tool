@@ -134,31 +134,16 @@ class DictateWindow(QMainWindow):
             self.show()  # Ensure window is shown even if there's an error
 
     def paste_text(self):
-        """Paste the text"""
+        """Paste the text and remove extra characters using pyautogui"""
         try:
-            # Use pynput to simulate keystrokes
-            # kb_controller = keyboard.Controller()
-            
-            # First, ensure we're properly focused on the target application
-            time.sleep(0.2)  # Give time for focus to settle
-
-            # Simulate two backspaces using pynput
-            kb_controller = keyboard.Controller()
-            kb_controller.press(Key.backspace)
-            kb_controller.release(Key.backspace)
-            time.sleep(0.05) # Small delay between backspaces
-            kb_controller.press(Key.backspace)
-            kb_controller.release(Key.backspace)
-            time.sleep(0.1) # Delay before pasting
-
-            # Paste using pynput cmd+v
-            with kb_controller.pressed(keyboard.Key.cmd):
-                kb_controller.press('v')
-                kb_controller.release('v')
-            
-            # Add a small delay after pasting
+            # Delete the recording start character
+            pyautogui.press('backspace')
+            pyautogui.press('backspace')
             time.sleep(0.1)
-                
+            
+            # Paste using cmd+v
+            pyautogui.hotkey('command', 'v')
+            
             self.status_label.setText("Done!")
         except Exception as paste_error:
             print(f"Paste failed: {paste_error}")
@@ -239,16 +224,10 @@ class DictateWindow(QMainWindow):
                 # Copy to clipboard
                 pyperclip.copy(self.transcribed_text)
                 
-                # --- Insert text at cursor position using Paste shortcut ---
+                # --- Insert text at cursor position using enhanced paste method ---
                 if self.transcribed_text:
-                    print("Simulating Cmd+V to paste transcription.")
-                    keyboard_controller = Controller()
-                    # Brief pause to allow focus switch if needed
-                    time.sleep(0.2) 
-                    with keyboard_controller.pressed(Key.cmd):
-                        keyboard_controller.press('v')
-                        keyboard_controller.release('v')
-                    print("Paste simulation complete.")
+                    print("Calling enhanced paste_text method...")
+                    self.paste_text()
                 # ---------------------------------------
 
             except openai.error.AuthenticationError:
