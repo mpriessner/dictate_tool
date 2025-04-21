@@ -5,9 +5,10 @@ from dotenv import load_dotenv; load_dotenv()
 
 import os, sys, time, base64, tempfile, wave, subprocess
 import numpy as np, sounddevice as sd, pyperclip
-from PyQt5.QtCore import Qt, QTimer, QBuffer, QByteArray
-from PyQt5.QtGui  import QImage
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QWidget, QVBoxLayout, QHBoxLayout, QSlider
+from PyQt5.QtCore import Qt, QTimer, QBuffer, QByteArray, QDateTime
+from PyQt5.QtGui import QImage, QFont, QIcon
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QWidget, QVBoxLayout, 
+                           QHBoxLayout, QSlider, QPushButton, QFrame, QSizePolicy)
 from pynput import keyboard
 import openai
 from anthropic import Anthropic
@@ -134,18 +135,84 @@ class VoiceTool(QMainWindow):
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
         self.frames, self.is_recording, self.mode = [], False, None
         self.speech_rate = VOICE_RATE
+        self.settings_visible = False
         self._setup_ui()
         self._hotkey()
         
+        # Timer for updating the time
+        self.time_timer = QTimer(self)
+        self.time_timer.timeout.connect(self._update_time)
+        self.time_timer.start(1000)  # Update every second
+        
     def _setup_ui(self):
-        # Create central widget and layout
+        # Set a dark theme
+        self.setStyleSheet("""
+            QMainWindow, QWidget { background-color: #1E1E1E; color: white; }
+            QLabel { color: white; }
+            QPushButton { background-color: #333; color: white; border: none; padding: 5px; }
+            QPushButton:hover { background-color: #444; }
+            QSlider::groove:horizontal { 
+                background: #555; height: 4px; 
+            }
+            QSlider::handle:horizontal { 
+                background: #3498db; width: 16px; margin: -6px 0; border-radius: 8px; 
+            }
+        """)
+        
+        # Create central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
-        # Status label
-        self.label = QLabel("Ready – `/> + 3 dict, `/> + 1 write, `/> + 2 speak")
-        layout.addWidget(self.label)
+        # Top bar with time and menu button
+        top_bar = QFrame()
+        top_bar.setFixedHeight(36)
+        top_bar.setStyleSheet("background-color: #1E1E1E;")
+        top_layout = QHBoxLayout(top_bar)
+        top_layout.setContentsMargins(10, 0, 10, 0)
+        
+        # Time display
+        self.time_label = QLabel()
+        self.time_label.setFont(QFont("Arial", 12))
+        self._update_time()  # Initialize with current time
+        
+        # Status indicator (circle) and status text
+        status_layout = QHBoxLayout()
+        status_layout.setSpacing(5)
+        
+        self.status_indicator = QLabel("●")
+        self.status_indicator.setStyleSheet("color: #4CAF50; font-size: 16px;")  # Green circle
+        
+        self.status_text = QLabel("Ready")
+        self.status_text.setFont(QFont("Arial", 10))
+        
+        status_layout.addWidget(self.status_indicator)
+        status_layout.addWidget(self.status_text)
+        
+        # Menu button
+        self.menu_button = QPushButton("≡")
+        self.menu_button.setFont(QFont("Arial", 16))
+        self.menu_button.setFixedSize(30, 30)
+        self.menu_button.clicked.connect(self._toggle_settings)
+        
+        # Add widgets to top bar
+        top_layout.addWidget(self.time_label)
+        top_layout.addLayout(status_layout)
+        top_layout.addStretch(1)
+        top_layout.addWidget(self.menu_button)
+        
+        # Settings panel (hidden by default)
+        self.settings_panel = QFrame()
+        self.settings_panel.setStyleSheet("background-color: #252525; border-top: 1px solid #333;")
+        settings_layout = QVBoxLayout(self.settings_panel)
+        
+        # Shortcuts info
+        shortcuts_label = QLabel("Shortcuts: `/< + 1 (write), `/< + 2 (speak), `/< + 3 (dict)")
+        shortcuts_label.setFont(QFont("Arial", 9))
+        shortcuts_label.setStyleSheet("color: #aaa;")
+        settings_layout.addWidget(shortcuts_label)
         
         # Speech rate slider
         rate_layout = QHBoxLayout()
@@ -161,9 +228,21 @@ class VoiceTool(QMainWindow):
         rate_layout.addWidget(rate_label)
         rate_layout.addWidget(self.rate_slider)
         rate_layout.addWidget(self.rate_value)
-        layout.addLayout(rate_layout)
+        settings_layout.addLayout(rate_layout)
         
+        # Add panels to main layout
+        main_layout.addWidget(top_bar)
+        main_layout.addWidget(self.settings_panel)
+        
+        # Connect signals
         self.rate_slider.valueChanged.connect(self._update_rate)
+        
+        # Hide settings panel initially
+        self.settings_panel.setVisible(False)
+        
+        # Set window size
+        self.setFixedWidth(400)
+        self.setFixedHeight(36)  # Just the top bar height initially
 
     # Hot‑key listener
     def _hotkey(self):
@@ -202,7 +281,8 @@ class VoiceTool(QMainWindow):
 
     def _start(self):
         self.frames.clear(); self.is_recording = True
-        self.label.setText(f"Recording ({self.mode})…")
+        self.status_indicator.setStyleSheet("color: #FF5733; font-size: 16px;")  # Red circle
+        self.status_text.setText(f"Recording ({self.mode})…")
         self.stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
                                      dtype='float32', callback=self._cb, blocksize=1024)
         self.stream.start()
@@ -210,7 +290,8 @@ class VoiceTool(QMainWindow):
     def _stop(self):
         self.is_recording = False
         self.stream.stop(); self.stream.close()
-        self.label.setText("Processing…")
+        self.status_indicator.setStyleSheet("color: #FFC107; font-size: 16px;")  # Yellow circle
+        self.status_text.setText("Processing…")
         QTimer.singleShot(0, self._process)
 
     def _cb(self, indata, frames, *_):
@@ -233,7 +314,8 @@ class VoiceTool(QMainWindow):
 
             if self.mode == "dict":          # simple dictation branch
                 self._paste(question, n_back=4)  # delete back-tick + 3
-                self.label.setText("Dictation done.")
+                self.status_indicator.setStyleSheet("color: #4CAF50; font-size: 16px;")  # Green circle
+                self.status_text.setText("Dictation done.")
                 return
 
             # --- Claude branch
@@ -244,7 +326,8 @@ class VoiceTool(QMainWindow):
             if self.mode == "text":
                 # For writing mode, paste the answer
                 self._paste(answer, n_back=4)    # delete back‑tick + 1/2 + additional chars
-                self.label.setText("Done.")
+                self.status_indicator.setStyleSheet("color: #4CAF50; font-size: 16px;")  # Green circle
+                self.status_text.setText("Done.")
             else:  # spoken mode
                 # For spoken mode, just copy to clipboard and speak
                 pyperclip.copy(answer)
@@ -254,14 +337,30 @@ class VoiceTool(QMainWindow):
                     kb.press(keyboard.Key.backspace); kb.release(keyboard.Key.backspace)
                 # Speak the answer
                 speak(answer, rate=self.speech_rate)
-                self.label.setText("Answer copied to clipboard (not pasted).")
+                self.status_indicator.setStyleSheet("color: #4CAF50; font-size: 16px;")  # Green circle
+                self.status_text.setText("Answer copied to clipboard.")
         except Exception as e:
-            self.label.setText(f"Error: {e}")
+            self.status_indicator.setStyleSheet("color: #F44336; font-size: 16px;")  # Error red
+            self.status_text.setText(f"Error: {e}")
             print("Error:", e)
             
     def _update_rate(self):
         self.speech_rate = self.rate_slider.value()
         self.rate_value.setText(f"{self.speech_rate} WPM")
+        
+    def _update_time(self):
+        current_time = QDateTime.currentDateTime().toString("hh:mm:ss")
+        self.time_label.setText(current_time)
+        
+    def _toggle_settings(self):
+        self.settings_visible = not self.settings_visible
+        self.settings_panel.setVisible(self.settings_visible)
+        
+        # Adjust window height based on settings visibility
+        if self.settings_visible:
+            self.setFixedHeight(120)  # Height with settings panel
+        else:
+            self.setFixedHeight(36)   # Height without settings panel
 
     # helper: copy text & paste, removing arming keys
     def _paste(self, text, n_back):
