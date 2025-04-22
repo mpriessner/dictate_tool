@@ -192,24 +192,24 @@ class WeeklyBarChartWidget(QWidget):
             y_value = i * (self.max_hours / 4)
             y_pos = height - chart_margin - (y_value / self.max_hours) * chart_height
             
-            # Draw grid line - convert float y_pos to int
-            painter.drawLine(int(chart_margin), int(y_pos), int(width - 10), int(y_pos))
+            # Draw grid line
+            painter.drawLine(chart_margin, y_pos, width - 10, y_pos)
             
-            # Draw y-axis label - convert float y_pos to int
-            painter.drawText(QPoint(5, int(y_pos + 5)), f"{y_value:.0f}")
+            # Draw y-axis label
+            painter.drawText(5, y_pos + 5, f"{y_value:.0f}")
         
         # Draw the average line
         if self.daily_hours:
             avg_hours = sum(self.daily_hours.values()) / len(self.daily_hours)
             avg_y = height - chart_margin - (avg_hours / self.max_hours) * chart_height
             
-            # Draw dashed average line - convert float avg_y to int
+            # Draw dashed average line
             dash_pen = QPen(QColor("#F5C2E7"), 1, Qt.DashLine)
             painter.setPen(dash_pen)
-            painter.drawLine(int(chart_margin), int(avg_y), int(width - 10), int(avg_y))
+            painter.drawLine(chart_margin, avg_y, width - 10, avg_y)
             
-            # Draw "Average" label - convert float avg_y to int
-            painter.drawText(QPoint(int(width - 70), int(avg_y - 5)), "Average")
+            # Draw "Average" label
+            painter.drawText(width - 70, avg_y - 5, "Average")
         
         # Draw bars for each day
         if self.daily_hours:
@@ -225,19 +225,19 @@ class WeeklyBarChartWidget(QWidget):
                 bar_height = (hours / self.max_hours) * chart_height
                 bar_y = height - chart_margin - bar_height
                 
-                # Draw the bar - convert float coordinates to int
+                # Draw the bar
                 bar_color = self.hover_color if day == self.hovered_bar else self.colors[day]
                 painter.setBrush(QBrush(bar_color))
                 painter.setPen(Qt.NoPen)
-                painter.drawRect(int(bar_x), int(bar_y), int(bar_width), int(bar_height))
+                painter.drawRect(bar_x, bar_y, bar_width, bar_height)
                 
-                # Draw day label - convert float coordinates to int
+                # Draw day label
                 painter.setPen(QPen(QColor("#CDD6F4")))
-                painter.drawText(QPoint(int(bar_x + bar_width/2 - 10), int(height - 10)), day)
+                painter.drawText(bar_x + bar_width/2 - 10, height - 10, day)
                 
-                # Draw hours on top of the bar if there's data - convert float coordinates to int
+                # Draw hours on top of the bar if there's data
                 if hours > 0:
-                    painter.drawText(QPoint(int(bar_x + bar_width/2 - 15), int(bar_y - 5)), f"{hours:.1f}")
+                    painter.drawText(bar_x + bar_width/2 - 15, bar_y - 5, f"{hours:.1f}")
     
     def mouseMoveEvent(self, event):
         """Handle mouse hover to highlight bars."""
@@ -275,7 +275,6 @@ class WeeklyBarChartWidget(QWidget):
         if self.hovered_bar:
             self.hovered_bar = None
             self.update()
-
 
 # --- Custom Bar Widget for Categories ---
 class CategoryBarWidget(QWidget):
@@ -512,12 +511,9 @@ class DashboardWindow(QDialog):
         self.pie_chart_widget = DonutChartWidget(self) # For Day view
         self.weekly_chart_widget = WeeklyBarChartWidget(self) # For Week view
         
-        # Add both widgets to the layout
+        # Initially show pie chart for day view
         self.chart_layout.addWidget(self.pie_chart_widget)
-        self.chart_layout.addWidget(self.weekly_chart_widget)
-        
-        # Initially show pie chart for day view and hide weekly chart
-        self.weekly_chart_widget.hide()
+        self.weekly_chart_widget.hide() # Hide weekly chart initially
         
         top_row_layout.addWidget(self.chart_section, 2) # Takes 2/3 of the space
         main_layout.addLayout(top_row_layout)
@@ -655,7 +651,7 @@ class DashboardWindow(QDialog):
                 
         # Clear chart data
         self.pie_chart_widget.setData({})
-        self.weekly_chart_widget.update_data({})  # Clear weekly chart data
+        self.weekly_chart_widget.update_data({})
         
         # Reset labels
         self.work_hours_label.setText("Work Hours: --")
@@ -803,19 +799,6 @@ class DashboardWindow(QDialog):
         
         # Update Focus Percentage Label
         if total_seconds > 0:
-            focus_percentage = (active_seconds / total_seconds) * 100
-            self.focus_percent_label.setText(f"Focus: {focus_percentage:.0f}%")
-        else:
-            self.focus_percent_label.setText("Focus: 0%")
-            
-        # Update pie chart
-        chart_data = {'Focus': active_seconds, 'Break': inactive_seconds}
-        self.pie_chart_widget.setData(chart_data)
-        
-        # Update categories
-        self.update_category_display(app_times)
-        
-    def load_data_for_week(self, date):
         """Loads and processes aggregated data for the week containing the given date."""
         # Get all dates in the week
         week_dates = self.get_week_dates(date)
@@ -828,7 +811,10 @@ class DashboardWindow(QDialog):
         app_times = {}  # Aggregate app usage across the week
         days_with_data = 0
         
-        # For the bar chart - track daily hours by day name (Mon, Tue, etc.)
+        # For the bar chart - track daily hours
+        daily_hours = {}
+        
+        # For the bar chart - track daily hours
         daily_hours = {}
         day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
         
@@ -943,8 +929,6 @@ class DashboardWindow(QDialog):
         
         # Update categories
         self.update_category_display(app_times)
-        
-        # Weekly chart is already updated in the main update section above
         
     def get_month_dates(self, date):
         """Returns a list of dates for the month containing the given date."""
