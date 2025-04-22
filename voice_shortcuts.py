@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # voice_shortcuts.py  —  unified tool with mode‑specific Claude prompts
 
-from dotenv import load_dotenv; load_dotenv()
+# Make sure to load environment variables first, with verbose output
+from dotenv import load_dotenv
+env_loaded = load_dotenv()
+print(f"Environment variables loaded from .env: {env_loaded}")
 
 import os, sys, time, base64, tempfile, wave, subprocess
 import numpy as np, sounddevice as sd, pyperclip
@@ -12,13 +15,41 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QWidget, QVBoxLa
 from pynput import keyboard
 import openai
 from anthropic import Anthropic
+import json
+import concurrent.futures
+import threading
+
+# Try to import Gemini API, but make it optional
+HAS_GEMINI = False
+try:
+    import google.generativeai as genai
+    HAS_GEMINI = True
+except ImportError:
+    print("Note: google-generativeai module not found. Gemini fallback will not be available.")
 
 # ───────────────────────── CONFIG & PROMPTS ─────────────────────────
 SAMPLE_RATE   = 16000
 VOICE         = os.getenv("VOICE", "Samantha")
 VOICE_RATE    = int(os.getenv("VOICE_RATE", "220"))
-MODEL_NAME    = "claude-3-7-sonnet-20250219"
+
+# AI Model Configuration
+CLAUDE_MODEL  = "claude-3-7-sonnet-20250219"
+GEMINI_MODEL  = "gemini-1.5-flash" # Use gemini-1.5-flash instead of 2.5-flash
+OPENAI_MODEL  = "gpt-4o"
 TEMP          = 0.3
+
+# Initialize Gemini API if available
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY")
+
+# Debug environment variables
+print(f"GEMINI_API_KEY present: {bool(os.getenv('GEMINI_API_KEY'))}")
+print(f"GOOGLE_API_KEY present: {bool(os.getenv('GOOGLE_API_KEY'))}")
+print(f"GOOGLE_GENERATIVE_AI_API_KEY present: {bool(os.getenv('GOOGLE_GENERATIVE_AI_API_KEY'))}")
+print(f"Final GEMINI_API_KEY value present: {bool(GEMINI_API_KEY)}")
+
+if HAS_GEMINI and GEMINI_API_KEY:
+    print(f"Gemini API key found and configured")
+    genai.configure(api_key=GEMINI_API_KEY)
 
 # keyboard combos - support both backtick (`) and greater-than (>) as triggers
 TRIGGER_KEYS = [keyboard.KeyCode.from_char('`'), keyboard.KeyCode.from_char('<')]
@@ -115,11 +146,179 @@ def build_messages(clip, question):
     blocks.append({"type": "text", "text": f"Voice request: {question_text}"})
     return [{"role": "user", "content": blocks}]
 
+# Anthropic Claude API
 def ask_claude(sys_prompt, msgs):
-    client = Anthropic()
-    r = client.messages.create(model=MODEL_NAME, max_tokens=1024,
-                               temperature=TEMP, system=sys_prompt, messages=msgs)
-    return r.content[0].text
+    try:
+        client = Anthropic()
+        r = client.messages.create(
+            model=CLAUDE_MODEL, 
+            max_tokens=1024,
+            temperature=TEMP, 
+            system=sys_prompt, 
+            messages=msgs
+        )
+        return r.content[0].text, "claude"
+    except Exception as e:
+        print(f"Claude API error: {e}")
+        return None, "claude"
+
+# Google Gemini API
+def ask_gemini(sys_prompt, msgs):
+    # Skip if Gemini is not available
+    if not HAS_GEMINI:
+        print("Gemini API not available: Module not installed")
+        return None, "gemini"
+        
+    # Skip if API key is not available
+    if not GEMINI_API_KEY:
+        print("Gemini API not available: No API key found")
+        return None, "gemini"
+        
+    # Ensure API key is configured
+    genai.configure(api_key=GEMINI_API_KEY)
+        
+    try:
+        # Configure Gemini model
+        generation_config = {
+            "temperature": TEMP,
+            "max_output_tokens": 1024,
+        }
+        
+        # Convert Anthropic message format to Gemini format
+        prompt = f"{sys_prompt}\n\n"
+        
+        # Extract content from messages
+        for msg in msgs:
+            if msg["role"] == "user":
+                for content in msg["content"]:
+                    if content["type"] == "text":
+                        prompt += f"{content['text']}\n"
+                    elif content["type"] == "image":
+                        # Skip images for now - we'll handle text only in fallback
+                        prompt += "[Image content not processed in fallback]\n"
+        
+        # Create Gemini model
+        model = genai.GenerativeModel(
+            model_name=GEMINI_MODEL,
+            generation_config=generation_config
+        )
+        
+        # Generate response
+        response = model.generate_content(prompt)
+        return response.text, "gemini"
+    except Exception as e:
+        print(f"Gemini API error: {e}")
+        return None, "gemini"
+
+# OpenAI API
+def ask_openai(sys_prompt, msgs):
+    try:
+        # Convert Anthropic message format to OpenAI format
+        openai_msgs = []
+        
+        # Add system message
+        openai_msgs.append({"role": "system", "content": sys_prompt})
+        
+        # Convert user messages
+        for msg in msgs:
+            if msg["role"] == "user":
+                content_text = ""
+                for content in msg["content"]:
+                    if content["type"] == "text":
+                        content_text += f"{content['text']}\n"
+                    elif content["type"] == "image":
+                        # Skip images for now - we'll handle text only in fallback
+                        content_text += "[Image content not processed in fallback]\n"
+                openai_msgs.append({"role": "user", "content": content_text})
+        
+        # Call OpenAI API (using the appropriate client based on version)
+        try:
+            # Try the new client first (OpenAI v1.0+)
+            client = openai.OpenAI()
+            response = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=openai_msgs,
+                temperature=TEMP,
+                max_tokens=1024
+            )
+            return response.choices[0].message.content, "openai"
+        except (AttributeError, TypeError):
+            # Fall back to legacy client
+            response = openai.ChatCompletion.create(
+                model=OPENAI_MODEL,
+                messages=openai_msgs,
+                temperature=TEMP,
+                max_tokens=1024
+            )
+            return response.choices[0].message.content, "openai"
+    except Exception as e:
+        print(f"OpenAI API error: {e}")
+        return None, "openai"
+
+# Helper function to call API with timeout and proper cancellation
+def call_with_timeout(func, *args, timeout=5):
+    """Call a function with a timeout and cancel the thread if it times out"""
+    # Use an event to signal cancellation
+    cancel_event = threading.Event()
+    result = [None, f"{func.__name__} (unknown error)"]
+    
+    def wrapped_func(*args):
+        try:
+            # Check if we should cancel before starting
+            if cancel_event.is_set():
+                return
+                
+            # Call the actual function
+            nonlocal result
+            result = func(*args)
+        except Exception as e:
+            print(f"Error in {func.__name__}: {e}")
+            result = None, f"{func.__name__} (error: {str(e)[:100]})"
+    
+    # Start the function in a thread
+    thread = threading.Thread(target=wrapped_func, args=args)
+    thread.daemon = True  # Allow the thread to be killed when the program exits
+    thread.start()
+    
+    # Wait for the thread to complete or timeout
+    thread.join(timeout=timeout)
+    
+    # If the thread is still alive after the timeout, signal cancellation and return
+    if thread.is_alive():
+        print(f"Timeout after {timeout} seconds for {func.__name__}")
+        cancel_event.set()  # Signal the thread to cancel
+        return None, f"{func.__name__} (timeout)"
+    
+    return result
+
+# Fallback mechanism
+def get_ai_response(sys_prompt, msgs):
+    # Set timeout in seconds
+    API_TIMEOUT = 5
+    
+    # Try Gemini first
+    print("\n--- Trying Gemini API ---")
+    response, provider = call_with_timeout(ask_gemini, sys_prompt, msgs, timeout=API_TIMEOUT)
+    if response:
+        print(f"Using {provider.upper()} API response")
+        return response
+    
+    # If Gemini fails, try Claude
+    print(f"\n--- Gemini API failed ({provider}), trying Claude... ---")
+    response, provider = call_with_timeout(ask_claude, sys_prompt, msgs, timeout=API_TIMEOUT)
+    if response:
+        print(f"Using {provider.upper()} API response")
+        return response
+    
+    # If Claude fails, try OpenAI
+    print(f"\n--- Claude API failed ({provider}), trying OpenAI... ---")
+    response, provider = call_with_timeout(ask_openai, sys_prompt, msgs, timeout=API_TIMEOUT)
+    if response:
+        print(f"Using {provider.upper()} API response")
+        return response
+    
+    # If all APIs fail, return error message
+    return "Sorry, all AI providers are currently unavailable. Please try again later."
 
 def speak(text, voice=VOICE, rate=VOICE_RATE):
     try:
@@ -308,9 +507,21 @@ class VoiceTool(QMainWindow):
                     wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(SAMPLE_RATE)
                     wf.writeframes((audio*32767).astype(np.int16).tobytes())
                 wav_path = fp.name
-            with open(wav_path, "rb") as af:
-                question = openai.Audio.transcribe("whisper-1", af)["text"]
-            os.unlink(wav_path)
+            try:
+                # Try the new client first (OpenAI v1.0+) with timeout
+                client = openai.OpenAI(timeout=10)  # 10 second timeout for transcription
+                with open(wav_path, "rb") as af:
+                    response = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=af
+                    )
+                    question = response.text
+            except (AttributeError, TypeError):
+                # Fall back to legacy client
+                with open(wav_path, "rb") as af:
+                    question = openai.Audio.transcribe("whisper-1", af)["text"]
+            finally:
+                os.unlink(wav_path)
 
             if self.mode == "dict":          # simple dictation branch
                 self._paste(question, n_back=4)  # delete back-tick + 3
@@ -318,10 +529,11 @@ class VoiceTool(QMainWindow):
                 self.status_text.setText("Dictation done.")
                 return
 
-            # --- Claude branch
+            # --- AI response with fallback mechanism
             clip = grab_clipboard()
             sys_prompt = PROMPT_TEXT if self.mode == "text" else PROMPT_SPOKEN
-            answer = ask_claude(sys_prompt, build_messages(clip, question))
+            self.status_text.setText("Querying AI services...")
+            answer = get_ai_response(sys_prompt, build_messages(clip, question))
             
             if self.mode == "text":
                 # For writing mode, paste the answer
@@ -372,13 +584,39 @@ class VoiceTool(QMainWindow):
             kb.press('v'); kb.release('v')
 
     def closeEvent(self, ev):
-        if getattr(self, 'listener', None): self.listener.stop()
+        if getattr(self, 'listener', None):
+            self.listener.stop()
         ev.accept()
 
 # ───────────────────────────── main ─────────────────────────────
 def main():
-    if not (os.getenv("OPENAI_API_KEY") and os.getenv("ANTHROPIC_API_KEY")):
-        print("Set OPENAI_API_KEY and ANTHROPIC_API_KEY"); return
+    # Check for required API keys (at least one LLM API key is required)
+    has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
+    has_gemini = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY"))
+    has_openai = bool(os.getenv("OPENAI_API_KEY"))
+    
+    if not has_openai:
+        print("Warning: OPENAI_API_KEY not set. OpenAI fallback will not be available.")
+    
+    if not has_anthropic:
+        print("Warning: ANTHROPIC_API_KEY not set. Claude will not be available.")
+    
+    if not has_gemini:
+        print("Warning: GOOGLE_API_KEY not set. Gemini fallback will not be available.")
+    
+    # We need at least one LLM API key and the OpenAI key for Whisper
+    if not has_openai:
+        print("Error: OPENAI_API_KEY is required for Whisper transcription.")
+        return
+        
+    if not (has_anthropic or has_gemini or has_openai):
+        print("Error: At least one LLM API key (ANTHROPIC_API_KEY, GOOGLE_API_KEY, or OPENAI_API_KEY) is required.")
+        return
+    # Inform user about Gemini availability
+    if not HAS_GEMINI:
+        print("Note: To enable Gemini fallback, install the package with:")
+        print("  pip install google-generativeai")
+        
     app = QApplication(sys.argv)
     win = VoiceTool(); win.show()
     sys.exit(app.exec_())

@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
     QLabel, QPushButton, QMenu, QAction, QDialog, QFormLayout,
     QTimeEdit, QSpinBox, QComboBox, QCheckBox
 )
+from pynput import mouse, keyboard
 
 class FocusTimer(QMainWindow):
     def __init__(self):
@@ -29,6 +30,13 @@ class FocusTimer(QMainWindow):
         self.work_hours = 0
         self.is_paused = False
         self.last_activity = time.time()
+        
+        # Activity tracking variables
+        self.activity_window = 5  # seconds to check for activity
+        self.activity_events = []
+        
+        # Set up activity listeners
+        self.setup_activity_tracking()
         
         # Set up logging directory
         self.setup_logging()
@@ -183,7 +191,7 @@ class FocusTimer(QMainWindow):
         # Focus label with reduced line spacing
         self.focus_label = QLabel("<html><div style='line-height:80%'>FOCUS TIME<br>ELAPSED</div></html>")
         self.focus_label.setFont(QFont("Arial", 7))  # Smaller font
-        self.focus_label.setStyleSheet("color: #888;")
+        self.focus_label.setStyleSheet("color: #888; padding-top: 5px;")  # Added padding to move text down
         self.focus_label.setAlignment(Qt.AlignLeft)
         
         # Work time display
@@ -195,7 +203,7 @@ class FocusTimer(QMainWindow):
         # Work label with reduced line spacing
         self.work_label = QLabel("<html><div style='line-height:80%'>WORK<br>HOURS</div></html>")
         self.work_label.setFont(QFont("Arial", 7))  # Smaller font
-        self.work_label.setStyleSheet("color: #888;")
+        self.work_label.setStyleSheet("color: #888; padding-top: 5px;")  # Added padding to move text down
         self.work_label.setAlignment(Qt.AlignLeft)
         
         # Percent display (replacing the separator dashes)
@@ -207,7 +215,7 @@ class FocusTimer(QMainWindow):
         # Percent of day with reduced line spacing (now just the label)
         self.percent_label = QLabel("<html><div style='line-height:80%'>PERCENT OF<br>DAY</div></html>")
         self.percent_label.setFont(QFont("Arial", 7))  # Smaller font
-        self.percent_label.setStyleSheet("color: #888;")
+        self.percent_label.setStyleSheet("color: #888; padding-top: 5px;")  # Added padding to move text down
         self.percent_label.setAlignment(Qt.AlignLeft)
         
         # Menu button
@@ -296,6 +304,59 @@ class FocusTimer(QMainWindow):
         # Save updated work hours to settings
         self.settings.setValue("today_work_hours", self.work_hours)
     
+    def setup_activity_tracking(self):
+        """Set up global mouse and keyboard listeners"""
+        # Start mouse listener
+        self.mouse_listener = mouse.Listener(
+            on_move=self.on_mouse_move,
+            on_click=self.on_mouse_click,
+            on_scroll=self.on_mouse_scroll
+        )
+        self.mouse_listener.start()
+        
+        # Start keyboard listener
+        self.keyboard_listener = keyboard.Listener(
+            on_press=self.on_key_press,
+            on_release=self.on_key_release
+        )
+        self.keyboard_listener.start()
+    
+    def on_mouse_move(self, x, y):
+        self.record_activity()
+    
+    def on_mouse_click(self, x, y, button, pressed):
+        self.record_activity()
+    
+    def on_mouse_scroll(self, x, y, dx, dy):
+        self.record_activity()
+    
+    def on_key_press(self, key):
+        self.record_activity()
+    
+    def on_key_release(self, key):
+        self.record_activity()
+    
+    def record_activity(self):
+        """Record an activity event with timestamp"""
+        current_time = time.time()
+        self.last_activity = current_time
+        self.activity_events.append(current_time)
+        
+        # Clean up old events outside the activity window
+        cutoff_time = current_time - self.activity_window
+        self.activity_events = [t for t in self.activity_events if t >= cutoff_time]
+    
+    def is_active_in_window(self):
+        """Check if there was activity in the activity window"""
+        if not self.activity_events:
+            return False
+            
+        current_time = time.time()
+        cutoff_time = current_time - self.activity_window
+        
+        # Check if there are any events in the window
+        return any(t >= cutoff_time for t in self.activity_events)
+    
     def update_display(self):
         # Update focus time
         if self.focus_start_time and not self.is_paused:
@@ -308,7 +369,9 @@ class FocusTimer(QMainWindow):
             current_minute = int(time.time() / 60)
             if not hasattr(self, 'last_logged_minute') or current_minute > self.last_logged_minute:
                 self.last_logged_minute = current_minute
-                self.log_activity(True)  # Log as active
+                # Use the 5-second window to determine if active
+                is_active = self.is_active_in_window()
+                self.log_activity(is_active)  # Log based on activity window
             
             # Auto-pause after inactivity
             if self.auto_pause and time.time() - self.last_activity > self.auto_pause_minutes * 60:
@@ -318,7 +381,9 @@ class FocusTimer(QMainWindow):
             current_minute = int(time.time() / 60)
             if not hasattr(self, 'last_logged_minute') or current_minute > self.last_logged_minute:
                 self.last_logged_minute = current_minute
-                self.log_activity(False)  # Log as inactive
+                # Still check activity window even when paused
+                is_active = self.is_active_in_window()
+                self.log_activity(is_active)
         
         # Calculate percent of day
         percent = (self.work_hours / self.target_hours) * 100
@@ -390,14 +455,14 @@ class FocusTimer(QMainWindow):
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.old_pos = event.globalPos()
-            self.last_activity = time.time()
+            self.record_activity()
     
     def mouseMoveEvent(self, event):
         if self.old_pos:
             delta = event.globalPos() - self.old_pos
             self.move(self.pos() + delta)
             self.old_pos = event.globalPos()
-            self.last_activity = time.time()
+            self.record_activity()
     
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -414,7 +479,12 @@ class FocusTimer(QMainWindow):
             self.pause_timer()
         
         # Log final activity state
-        self.log_activity(False, final=True)
+        is_active = self.is_active_in_window()
+        self.log_activity(is_active, final=True)
+        
+        # Stop listeners
+        self.mouse_listener.stop()
+        self.keyboard_listener.stop()
             
         event.accept()
 
@@ -452,7 +522,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.parent = parent
         self.setWindowTitle("Settings")
-        self.setFixedSize(300, 200)
+        self.setFixedSize(280, 200)  # Slightly narrower to ensure it fits on screen
         self.setStyleSheet("""
             QDialog {
                 background-color: #252535;
@@ -476,6 +546,7 @@ class SettingsDialog(QDialog):
             QPushButton:hover {
                 background-color: #4A4A5A;
             }
+            /* Individual button styles will override these */
             QCheckBox {
                 color: white;
             }
@@ -489,10 +560,18 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
+        # Adjust label alignment to move fields to the left
+        layout.setLabelAlignment(Qt.AlignLeft)
+        layout.setFormAlignment(Qt.AlignLeft)
+        
+        # Set field growth policy to ensure fields don't expand too much
+        layout.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)
+        
         # Target hours setting
         self.target_hours_spin = QSpinBox()
         self.target_hours_spin.setRange(1, 24)
         self.target_hours_spin.setValue(parent.target_hours)
+        self.target_hours_spin.setFixedWidth(60)  # Limit width
         layout.addRow("Target Hours:", self.target_hours_spin)
         
         # Auto-pause setting
@@ -504,6 +583,7 @@ class SettingsDialog(QDialog):
         self.auto_pause_minutes_spin = QSpinBox()
         self.auto_pause_minutes_spin.setRange(1, 60)
         self.auto_pause_minutes_spin.setValue(parent.auto_pause_minutes)
+        self.auto_pause_minutes_spin.setFixedWidth(60)  # Limit width
         layout.addRow("Auto-pause after (minutes):", self.auto_pause_minutes_spin)
         
         # Theme color
@@ -515,6 +595,7 @@ class SettingsDialog(QDialog):
         }
         
         self.theme_color_combo = QComboBox()
+        self.theme_color_combo.setFixedWidth(100)  # Limit width
         for name in self.theme_colors:
             self.theme_color_combo.addItem(name)
         
@@ -527,16 +608,54 @@ class SettingsDialog(QDialog):
         
         layout.addRow("Theme Color:", self.theme_color_combo)
         
-        # Buttons
+        # Buttons with improved styling - centered and smaller
         button_layout = QHBoxLayout()
-        self.cancel_button = QPushButton("Cancel")
-        self.save_button = QPushButton("Save")
+        button_layout.setContentsMargins(0, 10, 0, 0)
         
+        # Add stretch to push buttons to center
+        button_layout.addStretch(1)
+        
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setFixedSize(80, 30)  # Smaller size
+        self.cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: #444455;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #555566;
+            }
+        """)
         self.cancel_button.clicked.connect(self.reject)
+        
+        self.save_button = QPushButton("Save")
+        self.save_button.setFixedSize(80, 30)  # Smaller size
+        self.save_button.setStyleSheet("""
+            QPushButton {
+                background-color: #00AADD;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #22CCFF;
+            }
+        """)
         self.save_button.clicked.connect(self.accept)
         
+        # Add buttons with spacing between them
         button_layout.addWidget(self.cancel_button)
+        button_layout.addSpacing(10)
         button_layout.addWidget(self.save_button)
+        
+        # Add stretch to push buttons to center
+        button_layout.addStretch(1)
         
         layout.addRow("", button_layout)
 

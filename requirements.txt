@@ -8,3 +8,6 @@ sounddevice
 wave
 python-dotenv
 pyautogui
+anthropic>=0.49.0
+google-generativeai>=0.8.5
+pynput
