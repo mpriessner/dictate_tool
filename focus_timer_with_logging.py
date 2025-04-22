@@ -16,7 +16,16 @@ from PyQt5.QtWidgets import (
     QLabel, QPushButton, QMenu, QAction, QDialog, QFormLayout,
     QTimeEdit, QSpinBox, QComboBox, QCheckBox
 )
+# Import and configure matplotlib before other imports that might use it
+import matplotlib 
 from pynput import mouse, keyboard
+matplotlib.use('Qt5Agg')
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
+
+# Import the new dashboard window
+from focus_dashboard import DashboardWindow
 
 class FocusTimer(QMainWindow):
     def __init__(self):
@@ -70,6 +79,9 @@ class FocusTimer(QMainWindow):
         
         # Enable mouse tracking for hover effects
         self.setMouseTracking(True)
+        
+        # Set initial window position to top-left
+        self.move(70, 50) # Small offset from the very corner
     
     def load_settings(self):
         # Load settings with defaults
@@ -106,65 +118,97 @@ class FocusTimer(QMainWindow):
         if not os.path.exists(self.log_file):
             with open(self.log_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["timestamp", "active", "elapsed_time", "total_work_hours", "active_app", "note"])
+                writer.writerow(["timestamp", "active", "elapsed_time", "total_work_hours", "active_app", "url", "note"])
     
     def get_active_application(self):
         """Get the name of the currently active application on macOS"""
         try:
-            # Use AppleScript to get the name of the frontmost application
-            cmd = ["osascript", "-e", "tell application \"System Events\" to get name of first application process whose frontmost is true"]
+            # Use a more reliable AppleScript to get the name of the frontmost application
+            # This version gets the application name directly rather than through System Events
+            cmd = ["osascript", "-e", 
+                   """
+                   tell application "System Events"
+                       set frontApp to first application process whose frontmost is true
+                       set frontAppName to name of frontApp
+                       return frontAppName
+                   end tell
+                   """]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=1)
             app_name = result.stdout.strip()
             return app_name if app_name else "Unknown"
         except (subprocess.SubprocessError, subprocess.TimeoutExpired):
             return "Unknown"
     
-    def log_activity(self, active, final=False, reset=False, pause=False, resume=False):
-        """Log the current activity state"""
-        # Check if we need to create a new log for a new day
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        log_date = os.path.basename(os.path.dirname(self.log_file))
-        
-        # If the date has changed, set up new logging directory and file
-        if current_date != log_date:
-            print(f"Date changed from {log_date} to {current_date}, creating new log file")
-            self.setup_logging()
-            # Reset work hours for the new day
-            if not reset:  # Only reset if not already being reset
-                self.work_hours = 0
-                self.settings.setValue("today_work_hours", 0)
-                self.settings.setValue("last_date", current_date)
-        
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Calculate elapsed time if focus is active
-        elapsed_time = 0
-        if self.focus_start_time and not self.is_paused:
-            elapsed_time = time.time() - self.focus_start_time
-        
-        # Use the stored active application name from the last activity
-        active_app = self.last_active_app_name
-        
-        # Add note for special log entries
-        note = ""
-        if final:
-            note = "final"
-        elif reset:
-            note = "reset"
-        elif pause:
-            note = "pause"
-        elif resume:
-            note = "resume"
-            # For resume entries, show the elapsed time we're resuming from
-            elapsed_time = self.elapsed_time_before_pause
-        
-        # Write to log file
-        with open(self.log_file, 'a', newline='') as f:
-            writer = csv.writer(f)
-            if note:
-                writer.writerow([timestamp, int(active), round(elapsed_time), round(self.work_hours, 2), active_app, note])
+    def get_browser_url(self, browser_name):
+        """Get the URL of the active tab in a browser"""
+        try:
+            # Different AppleScript commands for different browsers
+            if browser_name == "Google Chrome":
+                script = """
+                tell application "Google Chrome"
+                    set currentURL to URL of active tab of front window
+                    return currentURL
+                end tell
+                """
+            elif browser_name == "Arc":
+                script = """
+                tell application "Arc"
+                    set currentURL to URL of active tab of front window
+                    return currentURL
+                end tell
+                """
+            elif browser_name == "Safari":
+                script = """
+                tell application "Safari"
+                    set currentURL to URL of current tab of front window
+                    return currentURL
+                end tell
+                """
             else:
-                writer.writerow([timestamp, int(active), round(elapsed_time), round(self.work_hours, 2), active_app])
+                return "n/a"  # Not a supported browser
+                
+            cmd = ["osascript", "-e", script]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1)
+            url = result.stdout.strip()
+            
+            # Extract just the main domain from the URL
+            if url:
+                return self.extract_main_domain(url)
+            return "n/a"
+        except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+            return "n/a"
+    
+    def extract_main_domain(self, url):
+        """Extract just the main domain from a URL (up to the TLD)"""
+        try:
+            # Remove protocol (http://, https://, etc.)
+            if "://" in url:
+                url = url.split("://", 1)[1]
+            
+            # Remove path, query parameters, etc.
+            if "/" in url:
+                url = url.split("/", 1)[0]
+            
+            # Remove port if present
+            if ":" in url:
+                url = url.split(":", 1)[0]
+            
+            # Handle common subdomains
+            parts = url.split(".")
+            if len(parts) > 2:
+                # Check if it's a known subdomain pattern like www.example.com
+                if parts[0] == "www":
+                    # Return example.com
+                    return ".".join(parts[1:])
+                
+                # For other subdomains, try to identify the main domain + TLD
+                # This is a simplified approach - for complex TLDs like co.uk, this would need refinement
+                return ".".join(parts[-2:])
+            
+            return url
+        except Exception:
+            # If any parsing error occurs, return the original URL
+            return url
     
     def load_todays_work_hours(self):
         """Load today's work hours from logs or settings"""
@@ -214,7 +258,7 @@ class FocusTimer(QMainWindow):
                 reset_index = -1
                 for i, row in enumerate(entries):
                     # Check if this is a reset entry
-                    if (len(row) >= 6 and row[5] == "reset") or (len(row) >= 5 and row[4] == "reset"):
+                    if (len(row) >= 7 and row[6] == "reset") or (len(row) >= 6 and row[5] == "reset"):
                         reset_index = i
                 
                 # If we found a reset, only process entries after the reset
@@ -318,12 +362,13 @@ class FocusTimer(QMainWindow):
         central_widget.setObjectName("centralWidget")
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
-        main_layout.setContentsMargins(10, 0, 10, 0)
+        main_layout.setContentsMargins(10, 5, 10, 5)  # Add vertical margins for better centering
         main_layout.setSpacing(0)  # No spacing to bring elements as close as possible
+        main_layout.setAlignment(Qt.AlignVCenter)  # Vertically center all widgets in the layout
         
         # Focus widget and layout
         self.focus_widget = FocusCircle("#00CCFF")  # Blue color
-        self.focus_widget.setFixedSize(22, 22)  # Slightly larger circle
+        self.focus_widget.setFixedSize(19, 19)  # Smaller circle
         
         focus_layout = QVBoxLayout()
         focus_layout.setContentsMargins(0, 0, 0, 0)
@@ -334,37 +379,37 @@ class FocusTimer(QMainWindow):
         self.focus_time_label = QLabel("00:00")
         self.focus_time_label.setFont(QFont("Arial", 16, QFont.Bold))  # Reduced by 2
         self.focus_time_label.setStyleSheet("color: #00CCFF;")  # Blue color
-        self.focus_time_label.setAlignment(Qt.AlignCenter)
+        self.focus_time_label.setAlignment(Qt.AlignCenter | Qt.AlignVCenter)  # Center horizontally and vertically
         
         # Focus label with reduced line spacing
         self.focus_label = QLabel("<html><div style='line-height:80%'>FOCUS TIME<br>ELAPSED</div></html>")
         self.focus_label.setFont(QFont("Arial", 7))  # Smaller font
-        self.focus_label.setStyleSheet("color: #888; padding-top: 5px;")  # Added padding to move text down
-        self.focus_label.setAlignment(Qt.AlignLeft)
+        self.focus_label.setStyleSheet("color: #888; padding-top: 2px;")  # Reduced padding for better alignment
+        self.focus_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # Align vertically center
         
         # Work time display
         self.work_time_label = QLabel("0 hr 0 min")
         self.work_time_label.setFont(QFont("Arial", 16, QFont.Bold))  # Reduced by 2
         self.work_time_label.setStyleSheet("color: #9370DB;")  # Purple color
-        self.work_time_label.setAlignment(Qt.AlignCenter)
+        self.work_time_label.setAlignment(Qt.AlignCenter | Qt.AlignVCenter)  # Center horizontally and vertically
         
         # Work label with reduced line spacing
         self.work_label = QLabel("<html><div style='line-height:80%'>WORK<br>HOURS</div></html>")
         self.work_label.setFont(QFont("Arial", 7))  # Smaller font
-        self.work_label.setStyleSheet("color: #888; padding-top: 5px;")  # Added padding to move text down
-        self.work_label.setAlignment(Qt.AlignLeft)
+        self.work_label.setStyleSheet("color: #888; padding-top: 2px;")  # Reduced padding for better alignment
+        self.work_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # Align vertically center
         
         # Percent display (replacing the separator dashes)
         self.percent_display = QLabel("0%")
         self.percent_display.setFont(QFont("Arial", 16, QFont.Bold))  # Same size as other numbers
         self.percent_display.setStyleSheet("color: #888;")
-        self.percent_display.setAlignment(Qt.AlignCenter)
+        self.percent_display.setAlignment(Qt.AlignCenter | Qt.AlignVCenter)  # Center horizontally and vertically
         
         # Percent of day with reduced line spacing (now just the label)
         self.percent_label = QLabel("<html><div style='line-height:80%'>PERCENT<br>OF DAY</div></html>")
         self.percent_label.setFont(QFont("Arial", 7))  # Smaller font
-        self.percent_label.setStyleSheet("color: #888; padding-top: 5px;")  # Added padding to move text down
-        self.percent_label.setAlignment(Qt.AlignLeft)
+        self.percent_label.setStyleSheet("color: #888; padding-top: 2px;")  # Reduced padding for better alignment
+        self.percent_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # Align vertically center
         
         # Menu button
         self.menu_button = QPushButton("≡")
@@ -389,10 +434,10 @@ class FocusTimer(QMainWindow):
         main_layout.addWidget(self.percent_label)
         
         # Adjust widget widths to move labels closer to numbers
-        self.focus_time_label.setFixedWidth(60)
-        self.focus_label.setFixedWidth(40)  # Reduced width to bring work hours closer
+        self.focus_time_label.setFixedWidth(50)
+        self.focus_label.setFixedWidth(50)  # Reduced width to bring work hours closer
         self.work_time_label.setFixedWidth(100)
-        self.work_label.setFixedWidth(30)
+        self.work_label.setFixedWidth(27)
         self.percent_display.setFixedWidth(40)
         self.percent_label.setFixedWidth(35)
         
@@ -596,7 +641,7 @@ class FocusTimer(QMainWindow):
             minutes, seconds = divmod(remainder, 60)
             self.focus_time_label.setText(f"{int(minutes):02d}:{int(seconds):02d}")
             
-            # Log activity every minute
+            # Log activity once per minute
             current_minute = int(time.time() / 60)
             if not hasattr(self, 'last_logged_minute') or current_minute > self.last_logged_minute:
                 self.last_logged_minute = current_minute
@@ -608,7 +653,7 @@ class FocusTimer(QMainWindow):
             if self.auto_pause and time.time() - self.last_activity > self.auto_pause_minutes * 60:
                 self.pause_focus()
         elif self.is_paused or not self.focus_start_time:
-            # Log inactivity every minute when paused
+            # Log inactivity once per minute when paused
             current_minute = int(time.time() / 60)
             if not hasattr(self, 'last_logged_minute') or current_minute > self.last_logged_minute:
                 self.last_logged_minute = current_minute
@@ -676,29 +721,37 @@ class FocusTimer(QMainWindow):
             pause_action.triggered.connect(self.pause_focus)
             menu.addAction(pause_action)
         elif self.is_paused:
-            # Currently paused - show both resume and restart options
+            # Currently paused - show resume option
             resume_action = QAction("Resume Focus", self)
             resume_action.triggered.connect(self.resume_focus)
             menu.addAction(resume_action)
-            
-            start_action = QAction("Start New Focus", self)
-            start_action.triggered.connect(self.start_focus)
-            menu.addAction(start_action)
         else:
             # Not started - show start option
             start_action = QAction("Start Focus", self)
             start_action.triggered.connect(self.start_focus)
             menu.addAction(start_action)
+            
+        # Always show "Start New Focus" option (except when not started)
+        if self.focus_start_time or self.is_paused:
+            new_focus_action = QAction("Start New Focus", self)
+            new_focus_action.triggered.connect(self.start_focus)
+            menu.addAction(new_focus_action)
+        
+        # Dashboard option
+        dashboard_action = QAction("Dashboard", self)
+        dashboard_action.triggered.connect(self.show_dashboard)
+        menu.addAction(dashboard_action)
         
         # Settings
         settings_action = QAction("Settings", self)
         settings_action.triggered.connect(self.show_settings)
         menu.addAction(settings_action)
         
-        # Reset
-        reset_action = QAction("Reset Day", self)
-        reset_action.triggered.connect(self.reset_timer)
-        menu.addAction(reset_action)
+        # Reset (only show when paused)
+        if self.is_paused:
+            reset_action = QAction("Reset Day", self)
+            reset_action.triggered.connect(self.reset_timer)
+            menu.addAction(reset_action)
         
         # Exit
         exit_action = QAction("Exit", self)
@@ -707,6 +760,13 @@ class FocusTimer(QMainWindow):
         
         # Show menu at button position
         menu.exec_(self.menu_button.mapToGlobal(self.menu_button.rect().bottomLeft()))
+    
+    def show_dashboard(self):
+        """Show the dashboard window with productivity statistics."""
+        # Get the directory where logs are stored
+        log_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'focus_logs')
+        dashboard = DashboardWindow(self, log_dir=log_base_dir)
+        dashboard.exec_()
     
     def show_settings(self):
         dialog = SettingsDialog(self)
@@ -740,20 +800,8 @@ class FocusTimer(QMainWindow):
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.old_pos = None
-    
-    # Removed roundedRect method as we're using stylesheet approach instead
-    
-    def enterEvent(self, event):
-        """Handle mouse entering the window area"""
-        # Minimize UI when mouse enters the window
-        self.minimize_ui()
-        event.accept()
-    
-    def leaveEvent(self, event):
-        """Handle mouse leaving the window area"""
-        # Restore UI when mouse leaves the window
-        self.restore_ui()
-        event.accept()
+            
+    # UI minimization is now handled by clicking the focus circle instead of hover events
     
     def minimize_ui(self):
         """Shrink the window to just show the control elements"""
@@ -780,7 +828,7 @@ class FocusTimer(QMainWindow):
             
             # Shrink the window to just show the control elements
             self.setFixedSize(60, 32)  # Width just enough for focus circle and menu button
-    
+            
     def restore_ui(self):
         """Restore the window to its original size and show all UI elements"""
         if self.ui_minimized:
@@ -790,7 +838,7 @@ class FocusTimer(QMainWindow):
             self.setFixedSize(self.original_width, 32)  # Use stored original width
             
             # Restore original layout margins
-            self.centralWidget().layout().setContentsMargins(10, 0, 10, 0)
+            self.centralWidget().layout().setContentsMargins(10, 5, 10, 5)
             
             # Show all the labels and numbers
             self.focus_time_label.show()
@@ -820,13 +868,67 @@ class FocusTimer(QMainWindow):
         self.keyboard_listener.stop()
             
         event.accept()
+    
+    def log_activity(self, active, final=False, reset=False, pause=False, resume=False):
+        """Log the current activity state"""
+        # Check if we need to create a new log for a new day
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        log_date = os.path.basename(os.path.dirname(self.log_file))
+        
+        # If the date has changed, set up new logging directory and file
+        if current_date != log_date:
+            print(f"Date changed from {log_date} to {current_date}, creating new log file")
+            self.setup_logging()
+            # Reset work hours for the new day
+            if not reset:  # Only reset if not already being reset
+                self.work_hours = 0
+                self.settings.setValue("today_work_hours", 0)
+                self.settings.setValue("last_date", current_date)
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Calculate elapsed time if focus is active
+        elapsed_time = 0
+        if self.focus_start_time and not self.is_paused:
+            elapsed_time = time.time() - self.focus_start_time
+        
+        # Use the stored active application name from the last activity
+        active_app = self.last_active_app_name
+        
+        # Get browser URL if the active app is a browser
+        url = "n/a"
+        if active_app in ["Google Chrome", "Arc", "Safari"]:
+            url = self.get_browser_url(active_app)
+        
+        # Add note for special log entries
+        note = ""
+        if final:
+            note = "final"
+        elif reset:
+            note = "reset"
+        elif pause:
+            note = "pause"
+        elif resume:
+            note = "resume"
+            # For resume entries, show the elapsed time we're resuming from
+            elapsed_time = self.elapsed_time_before_pause
+        
+        # Write to log file
+        with open(self.log_file, 'a', newline='') as f:
+            writer = csv.writer(f)
+            if note:
+                writer.writerow([timestamp, int(active), round(elapsed_time), round(self.work_hours, 2), active_app, url, note])
+            else:
+                writer.writerow([timestamp, int(active), round(elapsed_time), round(self.work_hours, 2), active_app, url])
+
 
 
 class FocusCircle(QWidget):
-    def __init__(self, color="#00CCFF"):
-        super().__init__()
+    def __init__(self, color="#00CCFF", parent=None):
+        super().__init__(parent)
         self.color = QColor(color)
         self.active = False
+        self.setCursor(Qt.PointingHandCursor)  # Change cursor to indicate clickable
     
     def set_active(self, active):
         self.active = active
@@ -848,6 +950,23 @@ class FocusCircle(QWidget):
             painter.setBrush(Qt.NoBrush)
         
         painter.drawEllipse(1, 1, self.width() - 2, self.height() - 2)
+        
+    def mousePressEvent(self, event):
+        """Handle mouse click on the focus circle to toggle UI state"""
+        if event.button() == Qt.LeftButton:
+            # Get the parent FocusTimer instance
+            parent = self.parent()
+            while parent and not isinstance(parent, QMainWindow):
+                parent = parent.parent()
+                
+            # Toggle UI state if parent is found
+            if parent:
+                if parent.ui_minimized:
+                    parent.restore_ui()
+                else:
+                    parent.minimize_ui()
+                    
+            event.accept()
 
 
 class SettingsDialog(QDialog):
