@@ -1,5 +1,159 @@
 import React, { useState, useEffect } from 'react';
 
+// Get Monday of the current week
+const getMondayOfWeek = (d) => {
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is Sunday
+  return new Date(d.setDate(diff));
+};
+
+// Timeline Component
+const Timeline = ({ intervals }) => {
+  const formatHour = (hour) => {
+    return hour.toString().padStart(2, '0');
+  };
+  
+  // Create hour labels
+  const hourLabels = [];
+  for (let h = 0; h <= 24; h += 4) {
+    hourLabels.push(h);
+  }
+
+  return (
+    <div className="w-full h-16 py-2">
+      <div className="relative w-full h-8 bg-gray-800 rounded">
+        {intervals && intervals.map((interval, index) => {
+          const startHour = interval.start.getHours() + interval.start.getMinutes() / 60;
+          const endHour = interval.end.getHours() + interval.end.getMinutes() / 60;
+          
+          const startPercent = (startHour / 24) * 100;
+          const width = ((endHour - startHour) / 24) * 100;
+          
+          return (
+            <div
+              key={index}
+              className={`absolute h-8 ${interval.focus ? 'bg-blue-400' : 'bg-cyan-400'}`}
+              style={{
+                left: `${startPercent}%`,
+                width: `${Math.max(0.5, width)}%`
+              }}
+              title={`${interval.start.toLocaleTimeString()} - ${interval.end.toLocaleTimeString()}`}
+            />
+          );
+        })}
+      </div>
+      <div className="relative w-full h-6 mt-1">
+        {hourLabels.map((hour) => (
+          <div 
+            key={hour} 
+            className="absolute text-xs text-gray-400"
+            style={{ left: `${(hour / 24) * 100}%`, transform: 'translateX(-50%)' }}
+          >
+            {formatHour(hour)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Weekly View Component
+const WeeklyView = ({ dailyHours }) => {
+  const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  
+  // Calculate average from days with data
+  const nonZeroDays = dailyHours.filter(day => day.hours > 0);
+  const average = nonZeroDays.length > 0 
+    ? (nonZeroDays.reduce((sum, day) => sum + day.hours, 0) / nonZeroDays.length).toFixed(1)
+    : 0;
+  
+  // Find max for scaling (at least 8 hours to match the image)
+  const maxHours = Math.max(8, ...dailyHours.map(day => day.hours));
+  
+  return (
+    <div className="w-full p-4">
+      <h2 className="text-xl font-semibold mb-4 ml-4">Daily Breakdown</h2>
+      
+      <div className="relative h-80">
+        <h3 className="text-lg font-semibold text-center mb-6">Work Hours by Day</h3>
+        
+        {/* Y-axis labels and grid lines */}
+        {[0, 2, 4, 6, 8].map(value => (
+          <div key={value} className="absolute w-full" style={{ bottom: `${(value / maxHours) * 85}%` }}>
+            <div className="absolute -left-6 text-gray-400">{value}</div>
+            <div className="w-full h-px bg-gray-700" />
+          </div>
+        ))}
+        
+        {/* Average line with value */}
+        {average > 0 && (
+          <div 
+            className="absolute w-full border-t border-dashed border-white opacity-60 z-10"
+            style={{ bottom: `${(average / maxHours) * 85}%` }}
+          >
+            <div className="absolute right-0 -top-5 text-white opacity-80">Average</div>
+            <div className="absolute right-0 top-1 text-white opacity-80">{average}</div>
+          </div>
+        )}
+        
+        {/* Bars for each day */}
+        <div className="absolute bottom-8 left-0 right-0 h-4/5 flex justify-between">
+          {dailyHours.map((dayData, index) => (
+            <div key={index} className="relative flex flex-col items-center justify-end" style={{ width: `${100/7}%` }}>
+              {dayData.hours > 0 && (
+                <>
+                  <div className="absolute -top-6 text-white text-sm">{dayData.hours}</div>
+                  <div 
+                    className="w-4/5 bg-blue-400 rounded-t"
+                    style={{ height: `${(dayData.hours / maxHours) * 85}%` }}
+                  />
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        {/* X-axis labels */}
+        <div className="absolute bottom-0 left-0 right-0 flex justify-between">
+          {daysOfWeek.map((day, index) => (
+            <div key={index} className="text-gray-300 pb-2" style={{ width: `${100/7}%`, textAlign: 'center' }}>
+              {day}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Monthly View Component
+const MonthlyView = ({ weeklyData }) => {
+  return (
+    <div className="w-full p-2">
+      {weeklyData.map((week, index) => (
+        <div key={index} className="flex items-center bg-gray-700 rounded p-3 mb-2">
+          <div className="flex-shrink-0 w-16 text-center">
+            <div className="text-sm font-medium">{week.week}</div>
+            <div className="text-xs text-gray-300">{week.dateRange}</div>
+          </div>
+          <div className="flex-grow mx-4">
+            <div className="w-full h-4 bg-gray-800 rounded-full">
+              <div 
+                className="h-4 bg-blue-400 rounded-full" 
+                style={{ width: `${(week.focusMinutes / week.totalMinutes) * 100}%` }}
+              />
+            </div>
+          </div>
+          <div className="flex-shrink-0 text-right">
+            <div className="text-sm">{Math.floor(week.totalMinutes / 60)}h {week.totalMinutes % 60}m</div>
+            <div className="text-xs text-gray-300">{Math.round((week.focusMinutes / week.totalMinutes) * 100)}% focus</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const FocusDashboard = () => {
   const [mode, setMode] = useState('day');
   const [data, setData] = useState(null);
@@ -88,6 +242,18 @@ const FocusDashboard = () => {
         console.log('Data received from Python:', result);
         console.log('App usage data:', result.app_usage);
         console.log('Raw app times:', result.raw_app_times);
+        
+        // Convert interval ISO strings to Date objects
+        if (result.intervals && Array.isArray(result.intervals)) {
+          const processedIntervals = result.intervals.map(interval => ({
+            start: new Date(interval.start),
+            end: new Date(interval.end),
+            focus: interval.focus
+          }));
+          result.intervals = processedIntervals;
+          console.log('Processed intervals:', processedIntervals);
+        }
+        
         setData(result);
       } catch (err) {
         console.error("Error fetching data:", err);
@@ -184,6 +350,14 @@ const FocusDashboard = () => {
       </div>
 
       {/* Main content */}
+      {/* Calendar view for day mode */}
+      {mode === 'day' && data.intervals && (
+        <div className="p-4 mb-4 bg-gray-800 rounded-lg">
+          <h2 className="text-lg font-bold mb-2">Calendar (sessions)</h2>
+          <Timeline intervals={data.intervals} />
+        </div>
+      )}
+      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Focus vs Break donut chart */}
         <div className="bg-gray-800 p-6 rounded-lg">
@@ -277,46 +451,25 @@ const FocusDashboard = () => {
         </div>
       </div>
       
-      {/* Weekly or Monthly view */}
-      {mode !== 'day' && (
+      {/* Weekly view */}
+      {mode === 'week' && data.daily_hours && (
+        <div className="p-4 mb-4 bg-gray-800 rounded-lg">
+          <WeeklyView dailyHours={data.daily_hours} />
+        </div>
+      )}
+      
+      {/* Monthly view */}
+      {mode === 'month' && data.weekly_hours && (
         <div className="mt-8 bg-gray-800 p-6 rounded-lg">
           <h2 className="text-xl font-semibold mb-4">
-            {mode === 'week' ? 'Daily Breakdown' : 'Weekly Breakdown'}
+            Weekly Breakdown
           </h2>
-          
-          <div className="h-64 relative">
-            {/* Y-axis */}
-            <div className="absolute left-0 top-0 bottom-0 w-10 flex flex-col justify-between">
-              <span>8h</span>
-              <span>6h</span>
-              <span>4h</span>
-              <span>2h</span>
-              <span>0h</span>
-            </div>
-            
-            {/* Bars */}
-            <div className="ml-10 h-full flex items-end justify-between">
-              {mode === 'week' && data.daily_hours && data.daily_hours.map((day, index) => (
-                <div key={index} className="flex flex-col items-center">
-                  <div 
-                    className="w-12 bg-blue-400 rounded-t-md"
-                    style={{ height: `${(day.hours / 8) * 100}%` }}
-                  ></div>
-                  <div className="mt-2">{day.day}</div>
-                </div>
-              ))}
-              
-              {mode === 'month' && data.weekly_hours && data.weekly_hours.map((week, index) => (
-                <div key={index} className="flex flex-col items-center">
-                  <div 
-                    className="w-12 bg-blue-400 rounded-t-md"
-                    style={{ height: `${(week.hours / 40) * 100}%` }}
-                  ></div>
-                  <div className="mt-2">{week.week}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <MonthlyView weeklyData={data.weekly_hours.map(week => ({
+            week: week.week,
+            dateRange: week.dateRange || '',
+            totalMinutes: week.totalMinutes || week.hours * 60,
+            focusMinutes: week.focusMinutes || (week.hours * 60 * 0.8), // Assume 80% focus if not provided
+          }))}/>
         </div>
       )}
       
