@@ -26,8 +26,8 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 
-# Import the new dashboard window
-from focus_dashboard import DashboardWindow
+# Import the new web-based dashboard window
+from focus_dashboard_web import DashboardWebView
 
 class FocusTimer(QMainWindow):
     def __init__(self):
@@ -767,7 +767,7 @@ class FocusTimer(QMainWindow):
         """Show the dashboard window with productivity statistics."""
         # Get the directory where logs are stored
         log_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'focus_logs')
-        dashboard = DashboardWindow(self, log_dir=log_base_dir)
+        dashboard = DashboardWebView(self, log_dir=log_base_dir)
         dashboard.exec_()
     
     def show_settings(self):

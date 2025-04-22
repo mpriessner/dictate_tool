@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Focus Dashboard</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="dashboard-react/build/static/css/main.3ca0d18a.css" rel="stylesheet">
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script>
+        // Initialize the Qt WebChannel when the document is loaded
+        document.addEventListener("DOMContentLoaded", function() {
+            new QWebChannel(qt.webChannelTransport, function(channel) {
+                // Make the Python handler available globally as window.pyHandler
+                window.pyHandler = channel.objects.pyHandler;
+                console.log("Qt WebChannel initialized, Python handler available");
+                
+                // Dispatch an event to notify React that the bridge is ready
+                const event = new CustomEvent('qtReady');
+                document.dispatchEvent(event);
+            });
+        });
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+    <script src="dashboard-react/build/static/js/main.b1394e1c.js"></script>
+</body>
+</html>
