@@ -275,10 +275,10 @@ class FocusTimer(QMainWindow):
         # Main window setup
         self.setWindowTitle("Focus Timer")
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-        self.setFixedSize(400, 32)  # Reduced height
+        self.setFixedSize(360, 30)  # Reduced width and height
         
         # Store the original width for restoration
-        self.original_width = 400
+        self.original_width = 360
         
         # We'll use stylesheet for rounded corners instead of mask
         # as it's more compatible
@@ -371,23 +371,29 @@ class FocusTimer(QMainWindow):
         self.menu_button.setFixedSize(22, 22)
         self.menu_button.clicked.connect(self.show_menu)
         
-        # Add widgets to layout
+        # Add widgets to layout - menu button first, then focus widget
+        main_layout.addWidget(self.menu_button)
         main_layout.addWidget(self.focus_widget)
         main_layout.addWidget(self.focus_time_label)
         main_layout.addWidget(self.focus_label)
         main_layout.addWidget(self.work_time_label)
         main_layout.addWidget(self.work_label)
+        
+        # Add spacing before percent display to move it further right
+        spacer = QWidget()
+        spacer.setFixedWidth(10)  # Adjust this value to control how far right it moves
+        main_layout.addWidget(spacer)
+        
         main_layout.addWidget(self.percent_display)
         main_layout.addWidget(self.percent_label)
-        main_layout.addWidget(self.menu_button)
         
         # Adjust widget widths to move labels closer to numbers
         self.focus_time_label.setFixedWidth(60)
         self.focus_label.setFixedWidth(40)  # Reduced width to bring work hours closer
         self.work_time_label.setFixedWidth(100)
-        self.work_label.setFixedWidth(40)
+        self.work_label.setFixedWidth(30)
         self.percent_display.setFixedWidth(40)
-        self.percent_label.setFixedWidth(60)
+        self.percent_label.setFixedWidth(35)
         
         # Make window draggable
         self.old_pos = None
@@ -845,7 +851,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.parent = parent
         self.setWindowTitle("Settings")
-        self.setFixedSize(280, 200)  # Slightly narrower to ensure it fits on screen
+        self.setFixedSize(280, 250)  # Slightly narrower to ensure it fits on screen
         self.setStyleSheet("""
             QDialog {
                 background-color: #252535;
@@ -931,15 +937,16 @@ class SettingsDialog(QDialog):
         
         layout.addRow("Theme Color:", self.theme_color_combo)
         
-        # Buttons with improved styling - centered and smaller
-        button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(0, 10, 0, 0)
+        # --- Button Layout Setup ---
+        # Create a container widget for the buttons
+        button_container = QWidget()
+        button_layout = QHBoxLayout(button_container) # Set the layout on the container
+        button_layout.setContentsMargins(0, 10, 0, 0) # Add some top margin for spacing
+        button_layout.setSpacing(10)
         
-        # Add stretch to push buttons to center
-        button_layout.addStretch(1)
-        
+        # Add buttons
         self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.setFixedSize(80, 30)  # Smaller size
+        self.cancel_button.setFixedSize(80, 20)  # Smaller size
         self.cancel_button.setStyleSheet("""
             QPushButton {
                 background-color: #444455;
@@ -956,7 +963,7 @@ class SettingsDialog(QDialog):
         self.cancel_button.clicked.connect(self.reject)
         
         self.save_button = QPushButton("Save")
-        self.save_button.setFixedSize(80, 30)  # Smaller size
+        self.save_button.setFixedSize(80, 20)  # Smaller size
         self.save_button.setStyleSheet("""
             QPushButton {
                 background-color: #00AADD;
@@ -974,13 +981,13 @@ class SettingsDialog(QDialog):
         
         # Add buttons with spacing between them
         button_layout.addWidget(self.cancel_button)
-        button_layout.addSpacing(10)
         button_layout.addWidget(self.save_button)
         
-        # Add stretch to push buttons to center
+        # Add stretch only on the right side to push buttons to the left
         button_layout.addStretch(1)
         
-        layout.addRow("", button_layout)
+        # Add the container widget to the form layout, spanning both columns
+        layout.addRow(button_container)
 
 
 def main():
