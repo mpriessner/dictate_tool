@@ -36,6 +36,7 @@ class FocusTimer(QMainWindow):
         # Activity tracking variables
         self.activity_window = 5  # seconds to check for activity
         self.activity_events = []
+        self.last_active_app_name = "Unknown" # Store the last app active during activity
         
         # UI state variables
         self.ui_minimized = False  # Track if UI is in minimized state
@@ -141,8 +142,8 @@ class FocusTimer(QMainWindow):
         if self.focus_start_time and not self.is_paused:
             elapsed_time = time.time() - self.focus_start_time
         
-        # Get the active application
-        active_app = self.get_active_application()
+        # Use the stored active application name from the last activity
+        active_app = self.last_active_app_name
         
         # Add note for special log entries
         note = ""
@@ -541,6 +542,9 @@ class FocusTimer(QMainWindow):
         current_time = time.time()
         self.last_activity = current_time
         self.activity_events.append(current_time)
+        
+        # Get and store the application active at this moment
+        self.last_active_app_name = self.get_active_application()
         
         # Clean up old events outside the activity window
         cutoff_time = current_time - self.activity_window
