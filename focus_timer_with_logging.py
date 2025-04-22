@@ -9,6 +9,8 @@ import json
 import csv
 from pathlib import Path
 import subprocess
+# ADD ↓
+sys.path.append(str(Path(__file__).parent))   # makes local imports reliable
 from PyQt5.QtCore import Qt, QTimer, QSettings
 from PyQt5.QtGui import QFont, QColor, QPainter, QPainterPath, QIcon
 from PyQt5.QtWidgets import (

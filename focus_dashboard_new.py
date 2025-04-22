@@ -102,7 +102,7 @@ class DonutChartWidget(QWidget):
         # draw inner hole (background‑coloured disk)
         p.setPen(Qt.NoPen)
         p.setBrush(QColor("#1E1E2E"))
-        p.drawEllipse(cen, r0, r0)
+        p.drawEllipse(QPointF(*cen.toTuple()), r0, r0)
 
     # ── interaction ───────────────────────────────────────────────────────
     def mouseMoveEvent(self, evt):
@@ -297,7 +297,7 @@ class CategoryBarWidget(QWidget):
         p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
         bw   = w * 0.70 * self.secs / self.max if self.max else 0
-        bar  = QRectF(0, 4, bw, h-8)
+        bar  = QRectF(0, 4, bw, h‑8)
         p.setPen(Qt.NoPen); p.setBrush(self.color)
         p.drawRoundedRect(bar, 4, 4)
 
