@@ -1050,7 +1050,7 @@ class FocusCircle(QWidget):
         self.color = QColor(color)
         self.active = False
         self.setCursor(Qt.PointingHandCursor)  # Change cursor to indicate clickable
-        self.setToolTip("Click to switch Work ⇄ Leisure mode\nDouble-click to minimize/maximize")
+        self.setToolTip("Click to minimize/maximize\nDouble-click to switch Work ⇄ Leisure mode")
     
     def set_active(self, active):
         self.active = active
@@ -1074,21 +1074,7 @@ class FocusCircle(QWidget):
         painter.drawEllipse(1, 1, self.width() - 2, self.height() - 2)
         
     def mousePressEvent(self, event):
-        """Handle mouse click on the focus circle to toggle focus mode"""
-        if event.button() == Qt.LeftButton:
-            # Get the parent FocusTimer instance
-            parent = self.parent()
-            while parent and not isinstance(parent, QMainWindow):
-                parent = parent.parent()
-                
-            # Toggle focus mode if parent is found
-            if parent and hasattr(parent, "toggle_focus_mode"):
-                parent.toggle_focus_mode()
-                    
-            event.accept()
-    
-    def mouseDoubleClickEvent(self, event):
-        """Handle double-click on the focus circle to toggle UI state"""
+        """Handle mouse click on the focus circle to toggle UI state"""
         if event.button() == Qt.LeftButton:
             # Get the parent FocusTimer instance
             parent = self.parent()
@@ -1101,6 +1087,20 @@ class FocusCircle(QWidget):
                     parent.restore_ui()
                 else:
                     parent.minimize_ui()
+                    
+            event.accept()
+    
+    def mouseDoubleClickEvent(self, event):
+        """Handle double-click on the focus circle to toggle focus mode"""
+        if event.button() == Qt.LeftButton:
+            # Get the parent FocusTimer instance
+            parent = self.parent()
+            while parent and not isinstance(parent, QMainWindow):
+                parent = parent.parent()
+                
+            # Toggle focus mode if parent is found
+            if parent and hasattr(parent, "toggle_focus_mode"):
+                parent.toggle_focus_mode()
                 
             event.accept()
 

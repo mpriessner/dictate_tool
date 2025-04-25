@@ -11,14 +11,13 @@ import numpy as np, sounddevice as sd, pyperclip
 from PyQt5.QtCore import Qt, QTimer, QBuffer, QByteArray, QDateTime
 from PyQt5.QtGui import QImage, QFont, QIcon, QPainter, QColor, QPen, QBrush
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QWidget, QVBoxLayout, 
-                           QHBoxLayout, QSlider, QPushButton, QFrame, QSizePolicy, QAction, QMenu, QDesktopWidget)
+                           QHBoxLayout, QSlider, QPushButton, QFrame, QSizePolicy, QAction, QMenu)
 from pynput import keyboard
 import openai
 from anthropic import Anthropic
 import json
 import concurrent.futures
 import threading
-import traceback
 
 # Try to import Gemini API, but make it optional
 HAS_GEMINI = False
@@ -85,8 +84,7 @@ You are a direct and concise writing assistant for Martin. Your task is to:
    - Preserve any relevant formatting from the clipboard content
 
 3. For message/email responses ONLY:
-   - Do NOT include a subject line unless the request explicitly asks for a subject.
-   - End with an appropriate signature based on the language used *in the voice request*:
+   - End with an appropriate signature:
      • German informal → "Liebe Grüße,\nMartin"
      • English formal  → "Best wishes,\nMartin"
    - Format as a proper reply with appropriate greeting if needed
@@ -96,24 +94,14 @@ You are a direct and concise writing assistant for Martin. Your task is to:
 
 # quick verbal answer prompt (for ` + 2)
 PROMPT_SPOKEN = """
-You are Martin's AI assistant. Provide clear answers to verbal questions.
-
-1. By default, give direct, extremely concise answers (1-2 sentences maximum).
-
-2. IMPORTANT: Check if the question ends with one of these detail level keywords:
-   - "short": Give a concise answer (default behavior, 1-2 sentences)
-   - "medium": Provide a moderately detailed answer (3-5 sentences with key points)
-   - "detailed": Give a comprehensive answer with more context, examples, and explanation
-
-3. Match the language of the question.
-
-4. Reference clipboard content naturally when needed, UNLESS the question starts with the word "ignore".
-
-5. IMPORTANT: If the question starts with "ignore", completely disregard any clipboard content and only respond to what comes after "ignore" in the question.
-
-6. No meta-commentary or preambles like "here's a short answer" or "in summary".
-
-7. If no detail level keyword is specified, default to the shortest, most concise response.
+You are Martin's AI assistant. Provide quick, clear answers to verbal questions.
+1. First line: briefly restate the understood question
+2. Then give the direct answer
+3. Be extremely concise
+4. Match the language of the question
+5. Reference clipboard content naturally when needed, UNLESS the question starts with the word "ignore"
+6. IMPORTANT: If the question starts with "ignore", completely disregard any clipboard content and only respond to what comes after "ignore" in the question
+7. No meta-commentary
 """
 
 # ───────────────────────── HELPERS ─────────────────────────
@@ -425,7 +413,8 @@ class VoiceTool(QMainWindow):
         # Remove standard window frame and make it stay on top
         self.setWindowFlags(
             Qt.FramelessWindowHint |  # No frame
-            Qt.WindowStaysOnTopHint   # Stay on top
+            Qt.WindowStaysOnTopHint |  # Stay on top
+            Qt.Tool  # Doesn't show in taskbar
         )
         
         # Enable rounded corners by making window transparent
@@ -445,7 +434,7 @@ class VoiceTool(QMainWindow):
         self._hotkey()
         
         # Set initial window position to top-left
-        self.move(55, 60) # Small offset from the very corner
+        self.move(70, 50)  # Small offset from the very corner
         
         # Make window draggable
         self.old_pos = None
@@ -498,14 +487,14 @@ class VoiceTool(QMainWindow):
         self.menu_button.clicked.connect(self._toggle_settings)
         
         # Status label
-        self.status_text = QLabel("Ready")
-        self.status_text.setFont(QFont("Arial", 12))
-        self.status_text.setStyleSheet(f"color: {self.PRIMARY_COLOR};")
+        self.status_label = QLabel("Ready")
+        self.status_label.setFont(QFont("Arial", 12))
+        self.status_label.setStyleSheet(f"color: {self.PRIMARY_COLOR};")
         
         # Add widgets to layout
         main_layout.addWidget(self.menu_button)
         main_layout.addWidget(self.focus_widget)
-        main_layout.addWidget(self.status_text)
+        main_layout.addWidget(self.status_label)
         
         # Set fixed size for the window
         self.setFixedSize(120, 32)
@@ -585,7 +574,7 @@ class VoiceTool(QMainWindow):
             self.original_width = self.width()
             
             # Hide the status label
-            self.status_text.hide()
+            self.status_label.hide()
             
             # Resize the window to be more compact
             self.setFixedWidth(60)
@@ -596,7 +585,7 @@ class VoiceTool(QMainWindow):
             self.ui_minimized = False
             
             # Show all hidden elements
-            self.status_text.show()
+            self.status_label.show()
             
             # Restore original width
             self.setFixedWidth(self.original_width)
@@ -622,7 +611,7 @@ class VoiceTool(QMainWindow):
     def _hotkey(self):
         current = set()
         def on_press(k):
-            if k in TRIGGER_KEYS or (hasattr(k, 'char') and k.char in '123'):
+            if k in TRIGGER_KEYS or isinstance(k, keyboard.KeyCode) and k.char in "123":
                 current.add(k)
                 if any(all(k in current for k in combo) for combo in COMBO_DICT):
                     self._toggle("dict")
@@ -651,16 +640,16 @@ class VoiceTool(QMainWindow):
         # Update focus circle color based on mode
         if mode == "text":
             self.focus_widget.color = QColor(self.PRIMARY_COLOR)
-            self.status_text.setStyleSheet(f"color: {self.PRIMARY_COLOR};")
-            self.status_text.setText("Write")
+            self.status_label.setStyleSheet(f"color: {self.PRIMARY_COLOR};")
+            self.status_label.setText("Write")
         elif mode == "spoken":
             self.focus_widget.color = QColor(self.SECONDARY_COLOR)
-            self.status_text.setStyleSheet(f"color: {self.SECONDARY_COLOR};")
-            self.status_text.setText("Speak")
+            self.status_label.setStyleSheet(f"color: {self.SECONDARY_COLOR};")
+            self.status_label.setText("Speak")
         elif mode == "dict":
             self.focus_widget.color = QColor(self.DICTATION_COLOR)
-            self.status_text.setStyleSheet(f"color: {self.DICTATION_COLOR};")
-            self.status_text.setText("Dictate")
+            self.status_label.setStyleSheet(f"color: {self.DICTATION_COLOR};")
+            self.status_label.setText("Dictate")
         
         self.focus_widget.update()
         
@@ -684,7 +673,7 @@ class VoiceTool(QMainWindow):
             self.focus_widget.set_active(False)
             self.stream.stop()
             self.stream.close()
-            self.status_text.setText("Processing...")
+            self.status_label.setText("Processing...")
             QTimer.singleShot(0, self._process)
     
     def _cb(self, indata, frames, *_):
@@ -694,11 +683,13 @@ class VoiceTool(QMainWindow):
     def _process(self):
         try:
             # Concatenate frames and convert to WAV
-            audio = np.concatenate(self.frames, axis=0)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f: 
-                with wave.open(f, 'wb') as wf: # Changed f.name to f
-                    wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(SAMPLE_RATE)
-                    wf.writeframes((audio*32767).astype(np.int16).tobytes())
+            audio = np.concatenate(self.frames)
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+                with wave.open(f.name, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(SAMPLE_RATE)
+                    wf.writeframes((audio * 32767).astype(np.int16).tobytes())
                 wav_path = f.name
                 
             try:
@@ -721,40 +712,35 @@ class VoiceTool(QMainWindow):
             clip = grab_clipboard()
             
             # Delete the trigger keys from the input field
-            kb = keyboard.Controller()
-            for _ in range(4):  # Delete backtick + number
-                kb.press(keyboard.Key.backspace); kb.release(keyboard.Key.backspace)
+            with keyboard.Controller() as kb:
+                for _ in range(4):  # Delete backtick + number
+                    kb.press(keyboard.Key.backspace); kb.release(keyboard.Key.backspace)
 
             if self.mode == "dict":          # simple dictation branch
-                self._paste(question)  # paste after deleting trigger keys
-                self.status_text.setText("Done.")
-                self.activateWindow() # Try to bring window to front
+                self._paste(question, n_back=4)  # delete back-tick + 3
+                self.status_label.setText("Dictation done.")
                 return
 
             # --- AI response with fallback mechanism
             sys_prompt = PROMPT_TEXT if self.mode == "text" else PROMPT_SPOKEN
-            self.status_text.setText("Querying AI services...")
+            self.status_label.setText("Querying AI services...")
             answer = get_ai_response(sys_prompt, build_messages(clip, question))
             
             if self.mode == "text":
                 # For text mode, paste the answer
-                self._paste(answer)    # paste after deleting trigger keys
-                self.status_text.setText("Done.")
+                self._paste(answer, n_back=4)    # delete back‑tick + 1/2 + additional chars
+                self.status_label.setText("Done.")
             else:  # spoken mode
                 # For spoken mode, just copy to clipboard and speak
                 pyperclip.copy(answer)
-
-                self._paste("", n_back=4)  # Only deletes 4 characters, does not paste anything
+                with keyboard.Controller() as kb:
+                    kb.press(keyboard.Key.backspace); kb.release(keyboard.Key.backspace)
+                # Speak the answer
                 speak(answer, rate=self.speech_rate)
-                self.status_text.setText("Done.")
+                self.status_label.setText("Answer copied to clipboard.")
         except Exception as e:
-            self.status_text.setText(f"Error: {e}")
-            print("--- DETAILED ERROR TRACEBACK ---")
-            traceback.print_exc()
-            print("--------------------------------")
-        finally:
-            # Ensure window is attempted to be brought to front even after errors or success
-            QTimer.singleShot(100, self.activateWindow)
+            self.status_label.setText(f"Error: {e}")
+            print("Error:", e)
     
     def _update_rate(self):
         """This method is kept for compatibility but not used in the new UI"""
@@ -765,15 +751,13 @@ class VoiceTool(QMainWindow):
         pass
     
     # helper: copy text & paste, removing arming keys
-    def _paste(self, text, n_back=0):
+    def _paste(self, text, n_back):
         pyperclip.copy(text); time.sleep(0.05)
-
-        kb = keyboard.Controller()
-        for _ in range(n_back):
-            kb.press(keyboard.Key.backspace); kb.release(keyboard.Key.backspace)
-        with kb.pressed(keyboard.Key.cmd):
-            kb.press('v'); kb.release('v')
-
+        with keyboard.Controller() as kb:
+            for _ in range(n_back):
+                kb.press(keyboard.Key.backspace); kb.release(keyboard.Key.backspace)
+            kb.press(keyboard.Key.ctrl); kb.press('v'); kb.release('v'); kb.release(keyboard.Key.ctrl)
+    
     def closeEvent(self, ev):
         try:
             self.listener.stop()
@@ -783,15 +767,7 @@ class VoiceTool(QMainWindow):
             pass
         super().closeEvent(ev)
 
-    def _position_window(self):
-        # Position window near top-right, shifted left
-        screen_geo = QDesktopWidget().availableGeometry()
-        window_width = self.width()
-        target_x = screen_geo.width() - window_width - 5 # 5px left shift
-        target_y = 50 # Position near the top
-        self.move(target_x, target_y)
-
-# ───────────────────────────── main ────────────────────────
+# ───────────────────────────── main ─────────────────────────────
 def main():
     # Check for required API keys (at least one LLM API key is required)
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
@@ -821,14 +797,8 @@ def main():
         print("  pip install google-generativeai")
         
     app = QApplication(sys.argv)
-    win = VoiceTool()
-    win.show()
-    win.raise_()
-    win.activateWindow()
-    try:
-        sys.exit(app.exec_())
-    except Exception as e:
-        print(f"Error: {e}")
+    win = VoiceTool(); win.show()
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
     main()
