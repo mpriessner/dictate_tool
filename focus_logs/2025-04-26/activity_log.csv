@@ -134,3 +134,16 @@ timestamp,active,elapsed_time,work_elapsed,leisure_elapsed,total_work_hours,tota
 2025-04-26 10:22:12,1,0,0,0,0.43,0.0,Electron,n/a,resume
 2025-04-26 10:22:28,0,0,0,0,0.44,0.0,Electron,n/a
 2025-04-26 10:22:28,1,0,0,0,0.44,0.0,Electron,n/a,resume
+2025-04-26 10:23:00,2,32,0,32,0.44,0.0,Electron,n/a
+2025-04-26 10:24:00,2,92,0,92,0.44,0.0,Electron,n/a
+2025-04-26 10:25:00,2,152,0,152,0.44,0.03,Electron,n/a
+2025-04-26 10:26:00,2,212,0,212,0.44,0.03,Google Chrome,checkfelix.com
+2025-04-26 10:27:00,2,272,0,272,0.44,0.03,Google Chrome,checkfelix.com
+2025-04-26 10:28:00,2,332,0,332,0.44,0.03,Google Chrome,ryanair.com
+2025-04-26 10:29:00,2,392,0,392,0.44,0.03,Google Chrome,ryanair.com
+2025-04-26 10:30:00,2,452,0,452,0.44,0.03,Google Chrome,checkfelix.com
+2025-04-26 10:30:35,0,0,0,0,0.45,0.0,Electron,n/a
+2025-04-26 10:30:35,1,0,0,0,0.45,0.0,Electron,n/a,resume
+2025-04-26 10:31:05,0,0,0,0,0.46,0.0,Electron,n/a
+2025-04-26 10:31:06,1,0,0,0,0.46,0.0,Electron,n/a,resume
+2025-04-26 10:32:01,1,55,55,0,0.46,0.0,Electron,n/a

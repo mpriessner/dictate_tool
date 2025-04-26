@@ -2,6 +2,7 @@
 # main_window.py - Main application window for Focus Timer
 
 import time
+import os
 from datetime import datetime
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont, QIcon
@@ -13,6 +14,7 @@ from PyQt5.QtWidgets import (
 from focus_timer_app.ui.focus_circle import FocusCircle
 from focus_timer_app.ui.settings_dialog import SettingsDialog
 from focus_timer_app.ui.styles import FocusTimerStyles
+from simple_dashboard import SimpleDashboardAdapter
 
 class FocusTimerWindow(QMainWindow):
     """Main window for the Focus Timer application"""
@@ -383,16 +385,13 @@ class FocusTimerWindow(QMainWindow):
         # Add separator
         menu.addSeparator()
         
-        # Toggle focus mode
-        if self.timer_core.focus_mode == self.timer_core.MODE_WORK:
-            toggle_action = QAction("Switch to Leisure Focus", self)
-        else:
-            toggle_action = QAction("Switch to Work Focus", self)
-        toggle_action.triggered.connect(self.toggle_focus_mode)
-        menu.addAction(toggle_action)
-        
         # Add separator
         menu.addSeparator()
+        
+        # Dashboard option
+        dashboard_action = QAction("Dashboard", self)
+        dashboard_action.triggered.connect(self.show_dashboard)
+        menu.addAction(dashboard_action)
         
         # UI actions
         if self.ui_minimized:
@@ -415,6 +414,13 @@ class FocusTimerWindow(QMainWindow):
         
         # Show the menu
         menu.exec_(self.mapToGlobal(self.menu_button.pos()))
+    
+    def show_dashboard(self):
+        """Show the dashboard window with productivity statistics."""
+        # Get the directory where logs are stored
+        log_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'focus_logs')
+        dashboard = SimpleDashboardAdapter(self, log_dir=log_base_dir)
+        dashboard.exec_()
     
     def show_settings(self):
         """Show the settings dialog"""
