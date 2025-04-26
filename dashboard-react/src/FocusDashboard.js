@@ -69,172 +69,171 @@ const Timeline = ({ intervals }) => {
   );
 };
 
-// Weekly View Component
+// Weekly View Component with Fixed Bar Display
 const WeeklyView = ({ dailyHours }) => {
   // Make sure dailyHours is an array
   const days = Array.isArray(dailyHours) ? dailyHours : [];
   console.log('WeeklyView received dailyHours:', dailyHours);
-  console.log('Processed days array:', days);
+  
   if (days.length === 0) {
     console.warn('No days data to render in WeeklyView');
-  } else {
-    console.log('Days with non-zero work hours:', days.filter(d => d.focusWorkHours > 0));
-    console.log('Days with non-zero leisure hours:', days.filter(d => d.focusLeisureHours > 0));
-    console.log('Days with non-zero break hours:', days.filter(d => d.breakHours > 0));
+    return <div className="text-center p-8">No data available for this week.</div>;
   }
   
+  // Calculate max hours for Y-axis scaling
+  const rawMaxHours = days.length > 0
+    ? Math.max(...days.map(day => {
+        const workHours = parseFloat(day.focusWorkHours) || 0;
+        const leisureHours = parseFloat(day.focusLeisureHours) || 0;
+        const breakHours = parseFloat(day.breakHours) || 0;
+        return workHours + leisureHours + breakHours;
+      }))
+    : 0;
+    
   // Calculate average focus hours from days with data
   const nonZeroDays = days.filter(day => day.focusHours > 0);
   const average = nonZeroDays.length > 0 
     ? (nonZeroDays.reduce((sum, day) => sum + day.focusHours, 0) / nonZeroDays.length).toFixed(1)
     : 0;
+
+  // Set a better maximum for the Y-axis that adapts to the data
+  // Add just a small buffer (20%) above the maximum value
+  let chartMaxY = rawMaxHours <= 0 ? 1 : rawMaxHours * 1.2;
   
-  // Find max for scaling
-  // Include all time types for max calculation
-  const rawMaxHours = days.length > 0 
-    ? Math.max(0.5, ...days.map(day => {
-        const workHours = parseFloat(day.focusWorkHours) || 0;
-        const leisureHours = parseFloat(day.focusLeisureHours) || 0;
-        const breakHours = parseFloat(day.breakHours) || 0;
-        console.log(`Day ${day.day}: work=${workHours}, leisure=${leisureHours}, break=${breakHours}`);
-        return workHours + leisureHours + breakHours;
-      }))
-    : 0.5;
+  // Set minimum scale to at least 1 hour if data is very small
+  chartMaxY = Math.max(chartMaxY, 1);
   
-  // Calculate separate max for focus time only (to make focus bars more visible)
-  const focusMaxHours = days.length > 0
-    ? Math.max(0.5, ...days.map(day => {
-        const workHours = parseFloat(day.focusWorkHours) || 0;
-        const leisureHours = parseFloat(day.focusLeisureHours) || 0;
-        return workHours + leisureHours;
-      }))
-    : 0.5;
-    
-  console.log('Max hours for scaling (total):', rawMaxHours);
-  console.log('Max hours for focus only:', focusMaxHours);
-  
-  // Set the max hours to be 1 hour above the highest bar instead of using a fixed scale
-  // This makes the chart adapt to the actual data range
-  const maxHours = Math.ceil(rawMaxHours) + 1;
-  console.log('Dynamic max hours set to:', maxHours, '(ceiling of', rawMaxHours, '+ 1)');
-  
-  // Generate dynamic Y-axis labels based on the max hours
-  // Use a step size appropriate for the data range
+  console.log('Using chartMaxY for scaling:', chartMaxY);
+
+  // Generate Y-axis labels with appropriate step size
   const yAxisLabels = [];
-  // Determine appropriate step size based on the max hours
   let yAxisStep;
-  if (maxHours <= 2) {
+  
+  // Determine appropriate step size based on the max value
+  if (chartMaxY <= 1) {
     yAxisStep = 0.2;
-  } else if (maxHours <= 4) {
+  } else if (chartMaxY <= 2) {
     yAxisStep = 0.5;
-  } else if (maxHours <= 10) {
+  } else if (chartMaxY <= 5) {
     yAxisStep = 1;
-  } else {
+  } else if (chartMaxY <= 10) {
     yAxisStep = 2;
+  } else {
+    yAxisStep = Math.ceil(chartMaxY / 5);
   }
   
-  // Generate labels from 0 to maxHours
-  for (let i = 1; i <= Math.floor(maxHours / yAxisStep); i++) {
-    yAxisLabels.push((i * yAxisStep).toFixed(1).replace('.0', '')); // Format label
+  // Generate labels at regular intervals
+  for (let i = yAxisStep; i < chartMaxY; i += yAxisStep) {
+    // Avoid floating point issues
+    if (i < chartMaxY - yAxisStep / 10) {
+      // Format as integer if it's a whole number
+      yAxisLabels.push(i % 1 === 0 ? i.toString() : i.toFixed(1));
+    }
   }
-  console.log('Generated y-axis labels:', yAxisLabels, 'with step size:', yAxisStep);
+  
+  console.log('Y-axis labels:', yAxisLabels, 'with step size:', yAxisStep);
 
   return (
-    <div className="relative bg-gray-800 p-4 rounded-lg shadow-lg flex flex-col" style={{ height: '300px' }}> {/* Increased height slightly */}
+    <div className="relative bg-gray-800 p-4 rounded-lg shadow-lg flex flex-col" style={{ height: '300px' }}>
       {/* Chart Title and Average */}
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold text-white">Daily Focus</h3>
         <span className="text-sm text-gray-400">Average: {average}h focus/day</span>
       </div>
 
-      {/* Main Chart Area (Y-axis + Bars + Grid) */}
-      <div className="flex-1 flex mb-6"> {/* Added margin-bottom for X-axis labels */} 
-        {/* Y-axis labels - Align items to space them correctly */}
+      {/* Main Chart Area */}
+      <div className="flex-1 flex mb-6">
+        {/* Y-axis labels */}
         <div className="flex flex-col justify-between w-10 text-right pr-2 text-xs text-gray-400">
-          {/* Add the maximum value at the top */}
           <div className="h-0 relative">
-            <span className="absolute -top-1.5 right-2">{maxHours}h</span>
+            <span className="absolute -top-1.5 right-2">{chartMaxY.toFixed(1)}h</span>
           </div>
-          {/* Add intermediate labels */}
           {yAxisLabels.slice().reverse().map((label, index) => (
             <div key={index} className="h-0 relative">
-              {/* Position label slightly above the line it corresponds to */} 
-              <span className="absolute -top-1.5 right-2">{label}h</span> 
+              <span className="absolute -top-1.5 right-2">{label}h</span>
             </div>
           ))}
-          {/* Explicit 0h label at the bottom, aligned with the bottom grid line */}
           <div className="h-0 relative">
             <span className="absolute -top-1.5 right-2">0h</span>
           </div>
         </div>
-        
-        {/* Chart Bars and Grid Lines Area */}
+
+        {/* Chart Grid and Bars */}
         <div className="flex-1 relative">
-          {/* Horizontal grid lines - Dynamically generated based on labels */} 
+          {/* Grid lines */}
           <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-            {/* Top grid line for max value */}
             <hr className="border-t border-gray-700" />
-            {/* Intermediate grid lines */}
             {yAxisLabels.map((_, index) => (
               <hr key={index} className="border-t border-gray-700" />
             ))}
-            {/* Bottom border line (for 0h) */}
-            <hr className="border-t border-gray-700" /> 
+            <hr className="border-t border-gray-700" />
           </div>
-          
-          {/* Bars - Use padding to align with grid */} 
-          <div className="absolute inset-0 flex items-end justify-around">
+
+          {/* Bars - FIXED: Changed display approach */}
+          <div className="absolute inset-0 flex justify-around">
             {days.map((day, index) => {
-              // Ensure we have valid numbers
               const workHours = parseFloat(day.focusWorkHours) || 0;
               const leisureHours = parseFloat(day.focusLeisureHours) || 0;
               const breakHours = parseFloat(day.breakHours) || 0;
               
-              // Calculate heights as percentages
-              const workHeight = maxHours > 0 ? (workHours / maxHours) * 100 : 0;
-              const leisureHeight = maxHours > 0 ? (leisureHours / maxHours) * 100 : 0;
-              const breakHeight = maxHours > 0 ? (breakHours / maxHours) * 100 : 0;
+              // Calculate heights as percentages of chartMaxY
+              const workHeightPercent = chartMaxY > 0 ? (workHours / chartMaxY) * 100 : 0;
+              const leisureHeightPercent = chartMaxY > 0 ? (leisureHours / chartMaxY) * 100 : 0;
+              const breakHeightPercent = chartMaxY > 0 ? (breakHours / chartMaxY) * 100 : 0;
               
-              console.log(`Rendering bar for ${day.day}: workHeight=${workHeight}%, leisureHeight=${leisureHeight}%, breakHeight=${breakHeight}%`);
+              // FIXED: Calculate absolute heights instead of percentages
+              const totalHeight = 220; // Approximate pixel height of chart area
+              const workHeight = Math.max((workHeightPercent / 100) * totalHeight, workHours > 0 ? 2 : 0);
+              const leisureHeight = Math.max((leisureHeightPercent / 100) * totalHeight, leisureHours > 0 ? 2 : 0);
+              const breakHeight = Math.max((breakHeightPercent / 100) * totalHeight, breakHours > 0 ? 2 : 0);
               
+              // FIXED: Calculate the total stack height
+              const stackHeight = workHeight + leisureHeight + breakHeight;
+              
+              console.log(`Bar for ${day.day}: work=${workHours}h (${workHeight.toFixed(1)}px), ` +
+                          `leisure=${leisureHours}h (${leisureHeight.toFixed(1)}px), ` +
+                          `break=${breakHours}h (${breakHeight.toFixed(1)}px), ` +
+                          `total=${stackHeight.toFixed(1)}px`);
+
               return (
-                <div key={index} className="flex flex-col items-center" style={{ width: '14%' }}>
-                  <div className="relative w-8 h-full flex flex-col-reverse">
-                    {/* Work focus time bar (bottom) */}
-                    {workHours > 0 && (
-                      <div 
-                        className="w-full bg-blue-500"
-                        style={{ 
-                          height: `${workHeight}%`, 
-                          minHeight: workHours > 0 ? '4px' : '0' 
-                        }}
-                        title={`Work: ${Math.floor(workHours)}h ${Math.round((workHours % 1) * 60)}m`}
-                      />
-                    )}
-                    
-                    {/* Leisure focus time bar (middle) */}
-                    {leisureHours > 0 && (
-                      <div 
-                        className="w-full bg-amber-400"
-                        style={{ 
-                          height: `${leisureHeight}%`, 
-                          minHeight: leisureHours > 0 ? '4px' : '0' 
-                        }}
-                        title={`Leisure: ${Math.floor(leisureHours)}h ${Math.round((leisureHours % 1) * 60)}m`}
-                      />
-                    )}
-                    
-                    {/* Break time bar (top) */}
-                    {breakHours > 0 && (
-                      <div 
-                        className="w-full bg-cyan-400 rounded-t"
-                        style={{ 
-                          height: `${breakHeight}%`, 
-                          minHeight: breakHours > 0 ? '4px' : '0' 
-                        }}
-                        title={`Break: ${Math.floor(breakHours)}h ${Math.round((breakHours % 1) * 60)}m`}
-                      />
-                    )}
+                <div key={index} className="flex flex-col justify-end h-full" style={{ width: '14%' }}>
+                  {/* FIXED: Stack the different bar types from bottom up */}
+                  <div className="w-8 mx-auto flex flex-col-reverse">
+                    {/* FIXED: Position all three bars in a stack */}
+                    <div className="relative" style={{ height: `${stackHeight}px` }}>
+                      {/* Work focus time (bottom) */}
+                      {workHours > 0 && (
+                        <div 
+                          className="absolute bottom-0 w-full bg-blue-500"
+                          style={{ height: `${workHeight}px` }}
+                          title={`Work: ${workHours.toFixed(1)}h`}
+                        />
+                      )}
+                      
+                      {/* Leisure focus time (middle) */}
+                      {leisureHours > 0 && (
+                        <div 
+                          className="absolute w-full bg-amber-400"
+                          style={{ 
+                            height: `${leisureHeight}px`,
+                            bottom: `${workHeight}px`
+                          }}
+                          title={`Leisure: ${leisureHours.toFixed(1)}h`}
+                        />
+                      )}
+                      
+                      {/* Break time (top) */}
+                      {breakHours > 0 && (
+                        <div 
+                          className="absolute w-full bg-cyan-400 rounded-t"
+                          style={{ 
+                            height: `${breakHeight}px`,
+                            bottom: `${workHeight + leisureHeight}px`
+                          }}
+                          title={`Break: ${breakHours.toFixed(1)}h`}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -243,22 +242,25 @@ const WeeklyView = ({ dailyHours }) => {
         </div>
       </div>
 
-      {/* X-Axis Labels - Positioned below the chart area */} 
-      <div className="flex justify-around pl-10 pr-0 -mt-4 text-xs text-gray-400"> {/* Adjusted margin-top and padding */} 
+      {/* X-axis labels */}
+      <div className="flex justify-around pl-10 pr-0 -mt-4 text-xs text-gray-400">
         {days.map((day, index) => (
           <div key={index} className="flex flex-col items-center text-center" style={{ width: '14%' }}>
-            <div>{day.day || ''}</div>
-            <div>{day.date || ''}</div>
+            <div>{day.day}</div>
+            <div>{day.date}</div>
           </div>
         ))}
       </div>
-      
-      {/* Legend - Moved below X-Axis Labels */} 
+
+      {/* Legend */}
       <div className="flex justify-center space-x-4 mt-3 text-xs text-gray-400">
-        <div className="flex items-center">
-          <span className="w-3 h-3 bg-blue-500 rounded-sm mr-1"></span>Work
-          <span className="w-3 h-3 bg-amber-400 rounded-sm mr-1"></span>Leisure
-          <span className="w-3 h-3 bg-cyan-400 rounded-sm mr-1"></span>Break
+        <div className="flex items-center space-x-2">
+          <span className="w-3 h-3 bg-blue-500 rounded-sm"></span>
+          <span>Work</span>
+          <span className="w-3 h-3 bg-amber-400 rounded-sm ml-2"></span>
+          <span>Leisure</span>
+          <span className="w-3 h-3 bg-cyan-400 rounded-sm ml-2"></span>
+          <span>Break</span>
         </div>
       </div>
     </div>

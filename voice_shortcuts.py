@@ -622,7 +622,7 @@ class VoiceTool(QMainWindow):
     def _hotkey(self):
         current = set()
         def on_press(k):
-            if k is not None and (k in TRIGGER_KEYS or (hasattr(k, 'char') and k.char in '123')):
+            if k is not None and (k in TRIGGER_KEYS or (hasattr(k, 'char') and k.char is not None and k.char in '123')):
                 current.add(k)
                 if any(all(k in current for k in combo) for combo in COMBO_DICT):
                     self._toggle("dict")
