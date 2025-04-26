@@ -94,6 +94,11 @@ class FocusTimerWindow(QMainWindow):
         self.menu_button.clicked.connect(self.show_menu)
         layout.addWidget(self.menu_button)
         
+        # Add spacing after menu button to move first timer right
+        first_timer_spacer = QWidget()
+        first_timer_spacer.setFixedWidth(10)  # Adjust this value to move the first timer more or less to the right
+        layout.addWidget(first_timer_spacer)
+        
         # Add focus circle widget
         self.focus_widget = FocusCircle(
             color=FocusTimerStyles.WORK_COLOR if self.timer_core.focus_mode == self.timer_core.MODE_WORK 
@@ -114,10 +119,15 @@ class FocusTimerWindow(QMainWindow):
         # Add focus label with reduced line spacing
         self.focus_label = QLabel("<html><div style='line-height:80%'>FOCUS TIME<br>ELAPSED</div></html>")
         self.focus_label.setFont(QFont("Arial", 7))  # Smaller font
-        self.focus_label.setStyleSheet("color: #888; padding-top: 2px;")  # Gray color with padding
+        self.focus_label.setStyleSheet("color: #888; padding-top: 2px; padding-left: 10px;")  # Added left padding
         self.focus_label.setFixedWidth(50)
         self.focus_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # Left-aligned with vertical center
         layout.addWidget(self.focus_label)
+        
+        # Add spacing before work time display to move it right
+        work_spacer = QWidget()
+        work_spacer.setFixedWidth(10)  # Adjust this value to move the work time display more or less to the right
+        layout.addWidget(work_spacer)
         
         # Add work time label (H hr M min)
         self.work_time_label = QLabel("0 hr 0 min")
@@ -130,8 +140,8 @@ class FocusTimerWindow(QMainWindow):
         # Add work label with reduced line spacing
         self.work_label = QLabel("<html><div style='line-height:80%'>WORK<br>HOURS</div></html>")
         self.work_label.setFont(QFont("Arial", 7))  # Smaller font
-        self.work_label.setStyleSheet("color: #888; padding-top: 2px; padding-left: 30px;")  # Added left padding to move label right
-        self.work_label.setFixedWidth(40)  # Match original width
+        self.work_label.setStyleSheet("color: #888; padding-top: 2px; padding-left: 50px;")  # Added left padding to move label right
+        self.work_label.setFixedWidth(120)  # Width must be greater than padding to show content
         self.work_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # Left-aligned with vertical center
         layout.addWidget(self.work_label)
         
