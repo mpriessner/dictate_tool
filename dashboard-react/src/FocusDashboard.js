@@ -656,21 +656,24 @@ const FocusDashboard = () => {
                 
                 {/* Calculate total time and percentages */}
                 {(() => {
-                  const totalTime = (data.focusWork || 0) + (data.focusLeisure || 0) + data.break;
+                  const totalTime = (data.focusWork || 0) + (data.focusLeisure || 0) + (data.inactive || 0) + data.break;
                   const workPercent = totalTime > 0 ? (data.focusWork || 0) / totalTime : 0;
                   const leisurePercent = totalTime > 0 ? (data.focusLeisure || 0) / totalTime : 0;
+                  const inactivePercent = totalTime > 0 ? (data.inactive || 0) / totalTime : 0;
                   const breakPercent = totalTime > 0 ? data.break / totalTime : 0;
                   
                   // Calculate stroke dash values
                   const circumference = 251.2; // 2 * PI * r where r = 40
                   const workDash = workPercent * circumference;
                   const leisureDash = leisurePercent * circumference;
+                  const inactiveDash = inactivePercent * circumference;
                   const breakDash = breakPercent * circumference;
                   
                   // Calculate offsets
                   const breakOffset = 0;
-                  const leisureOffset = -1 * breakDash;
-                  const workOffset = -1 * (breakDash + leisureDash);
+                  const inactiveOffset = -1 * breakDash;
+                  const leisureOffset = -1 * (breakDash + inactiveDash);
+                  const workOffset = -1 * (breakDash + inactiveDash + leisureDash);
                   
                   return (
                     <>
@@ -685,6 +688,21 @@ const FocusDashboard = () => {
                           strokeWidth="20"
                           strokeDasharray={`${breakDash} ${circumference}`}
                           strokeDashoffset={breakOffset}
+                          transform="rotate(-90 50 50)"
+                        />
+                      )}
+                      
+                      {/* Inactive segment */}
+                      {data.inactive > 0 && (
+                        <circle 
+                          cx="50" 
+                          cy="50" 
+                          r="40" 
+                          fill="transparent" 
+                          stroke="#4B5563" 
+                          strokeWidth="20"
+                          strokeDasharray={`${inactiveDash} ${circumference}`}
+                          strokeDashoffset={inactiveOffset}
                           transform="rotate(-90 50 50)"
                         />
                       )}
@@ -748,6 +766,12 @@ const FocusDashboard = () => {
             <div className="flex items-center bg-gray-700 px-3 py-2 rounded-md">
               <div className="w-5 h-5 bg-amber-400 mr-2 rounded-sm"></div>
               <span className="font-medium">Leisure: {Math.floor((data.focusLeisure || 0) / 60)}h {(data.focusLeisure || 0) % 60}m</span>
+            </div>
+            
+            {/* Inactive category */}
+            <div className="flex items-center bg-gray-700 px-3 py-2 rounded-md">
+              <div className="w-5 h-5 bg-gray-600 mr-2 rounded-sm"></div>
+              <span className="font-medium">Inactive: {Math.floor((data.inactive || 0) / 60)}h {(data.inactive || 0) % 60}m</span>
             </div>
             
             {/* Break category */}

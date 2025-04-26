@@ -42,6 +42,7 @@ class SimpleDashboardHandler(QObject):
         data = {
             'focusWork': 0,
             'focusLeisure': 0,
+            'inactive': 0,  # Track inactive time separately
             'focus': 0,  # Total focus (work + leisure) for backward compatibility
             'break': 0,
             'raw_app_times': {},
@@ -178,37 +179,35 @@ class SimpleDashboardHandler(QObject):
                             
                             # Add to the appropriate counter
                             if current_focus:  # If it was a focus interval
-                                # Determine if it was work or leisure focus
-                                # Use the last known active state in this interval
-                                last_active_val = 0
-                                for j in range(i-1, -1, -1):
-                                    if all_logs[j][0] >= current_start and all_logs[j][0] <= last_timestamp:
-                                        val = all_logs[j][1]  # Already an integer
-                                        if val > 0:  # If it was active (1 or 2)
-                                            last_active_val = val
-                                            break
+                                # Calculate work, leisure, and inactive time based on actual logged values
+                                work_time = 0
+                                leisure_time = 0
+                                inactive_time = 0
                                 
-                                # Check for restart markers in this interval
-                                has_restart = False
-                                with log_path.open('r') as f:
-                                    reader = csv.DictReader(f)
-                                    for row in reader:
-                                        row_time = datetime.strptime(row['timestamp'], '%Y-%m-%d %H:%M:%S')
-                                        if row_time >= current_start and row_time <= last_timestamp:
-                                            note = row.get('note', '')
-                                            if note == 'restart':
-                                                has_restart = True
-                                                break
+                                # Go through all logs in this interval
+                                for j in range(i):
+                                    log_time = all_logs[j][0]
+                                    if current_start <= log_time <= last_timestamp:
+                                        val = all_logs[j][1]  # Active value
+                                        # Calculate time until next log or interval end
+                                        next_time = all_logs[j+1][0] if j+1 < len(all_logs) else last_timestamp
+                                        if next_time > last_timestamp:
+                                            next_time = last_timestamp
+                                        duration = (next_time - log_time).total_seconds()
+                                        
+                                        # Add to appropriate counter
+                                        if val == 1:  # Work focus
+                                            work_time += duration
+                                        elif val == 2:  # Leisure focus
+                                            leisure_time += duration
+                                        elif val == 0:  # Inactive
+                                            inactive_time += duration
                                 
-                                # If there was a restart in this interval, adjust the duration
-                                if not has_restart:
-                                    if last_active_val == 1:  # Work focus
-                                        data['focusWork'] += interval_duration
-                                    elif last_active_val == 2:  # Leisure focus
-                                        data['focusLeisure'] += interval_duration
-                                    
-                                    # Also add to total focus for backward compatibility
-                                    data['focus'] += interval_duration
+                                # Add the calculated times to the totals
+                                data['focusWork'] += work_time
+                                data['focusLeisure'] += leisure_time
+                                data['inactive'] += inactive_time
+                                data['focus'] += work_time + leisure_time  # Total focus for compatibility
                             else:  # If it was a break interval
                                 data['break'] += interval_duration
                                 
