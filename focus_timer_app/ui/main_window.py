@@ -452,6 +452,8 @@ class FocusTimerWindow(QMainWindow):
             resume (bool, optional): Whether the timer was resumed
             restart (bool, optional): Whether the timer was restarted
         """
+        # Calculate current minute at the start since we use it in multiple places
+        current_minute = int(time.time() / 60)
         # Get active application and URL
         active_app = self.app_tracker.get_active_application()
         url = "n/a"
@@ -483,6 +485,13 @@ class FocusTimerWindow(QMainWindow):
         elapsed_time = self.timer_core.get_elapsed_time()
         work_elapsed = round(elapsed_time) if active_val == 1 else 0
         leisure_elapsed = round(elapsed_time) if active_val == 2 else 0
+        
+        # Add elapsed time to the appropriate bucket
+        if active_val > 0 and not pause and not final:  # Only accumulate time when active and not pausing/ending
+            hours_elapsed = elapsed_time / 3600  # Convert seconds to hours
+            if not hasattr(self, 'last_accumulated_time') or current_minute > self.last_accumulated_time:
+                self.last_accumulated_time = current_minute
+                self.timer_core.add_elapsed_time(1/60)  # Add one minute of time
         
         # Log the activity
         self.logger.log_activity(
