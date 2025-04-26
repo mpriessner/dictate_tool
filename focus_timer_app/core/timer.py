@@ -110,12 +110,19 @@ class FocusTimerCore:
         self.settings.save()
     
     def get_progress_percent(self):
-        """Calculate progress as a percentage of target hours
+        """Calculate progress as a percentage of an 8-hour workday
         
         Returns:
-            float: Progress percentage
+            float: Progress percentage based on current mode (work or leisure)
         """
-        return (self.work_hours / self.settings.target_hours) * 100 if self.settings.target_hours > 0 else 0
+        # Use 8 hours as the baseline for a full day
+        FULL_DAY_HOURS = 8.0
+        
+        # Calculate percentage based on current mode
+        if self.focus_mode == self.MODE_WORK:
+            return (self.work_hours / FULL_DAY_HOURS) * 100
+        else:  # Leisure mode
+            return (self.leisure_hours / FULL_DAY_HOURS) * 100
     
     def format_elapsed_time(self):
         """Format the current elapsed time as minutes:seconds

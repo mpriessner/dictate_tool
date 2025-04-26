@@ -175,13 +175,14 @@ class FocusTimerWindow(QMainWindow):
     
     def update_display(self):
         """Update the UI display"""
-        # Update focus time if active
+        current_time = time.time()
+        current_minute = int(current_time / 60)
+        
+        # Always update the focus time label if timer is active
         if self.timer_core.focus_start_time and not self.timer_core.is_paused:
-            # Update the focus time label
             self.focus_time_label.setText(self.timer_core.format_elapsed_time())
             
-            # Log activity once per minute
-            current_minute = int(time.time() / 60)
+            # Check if we need to log activity (once per minute)
             if not hasattr(self, 'last_logged_minute') or current_minute > self.last_logged_minute:
                 self.last_logged_minute = current_minute
                 # Use the 5-second window to determine if active
@@ -193,14 +194,13 @@ class FocusTimerWindow(QMainWindow):
                 self.pause_focus()
         elif self.timer_core.is_paused or not self.timer_core.focus_start_time:
             # Log inactivity once per minute when paused
-            current_minute = int(time.time() / 60)
             if not hasattr(self, 'last_logged_minute') or current_minute > self.last_logged_minute:
                 self.last_logged_minute = current_minute
                 # Still check activity window even when paused
                 is_active = self.activity_tracker.is_active_in_window()
                 self.log_activity(is_active)
         
-        # Update work/leisure time display
+        # Always update the time displays and percentages
         self.update_time_display()
         
         # Update the focus circle active state
@@ -214,8 +214,19 @@ class FocusTimerWindow(QMainWindow):
         else:
             self.work_time_label.setText(self.timer_core.format_leisure_time())
         
-        # Calculate percent of day (allow going over 100%)
-        percent = self.timer_core.get_progress_percent()
+        # Calculate real-time progress including current session
+        current_hours = 0
+        if self.timer_core.focus_start_time and not self.timer_core.is_paused:
+            current_session_hours = self.timer_core.get_elapsed_time() / 3600
+            if self.timer_core.focus_mode == self.timer_core.MODE_WORK:
+                current_hours = self.timer_core.work_hours + current_session_hours
+            else:
+                current_hours = self.timer_core.leisure_hours + current_session_hours
+        else:
+            current_hours = self.timer_core.work_hours if self.timer_core.focus_mode == self.timer_core.MODE_WORK else self.timer_core.leisure_hours
+        
+        # Calculate percent of 8-hour day
+        percent = (current_hours / 8.0) * 100
         display_percent = min(100, percent)  # Cap at 100% for display purposes
         
         # Update the percent display
