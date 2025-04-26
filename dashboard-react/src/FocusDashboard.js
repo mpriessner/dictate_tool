@@ -113,18 +113,31 @@ const WeeklyView = ({ dailyHours }) => {
   console.log('Max hours for scaling (total):', rawMaxHours);
   console.log('Max hours for focus only:', focusMaxHours);
   
-  // Add a small delta (10%) to the max for better visualization
-  const maxHours = rawMaxHours * 1.1;
+  // Set the max hours to be 1 hour above the highest bar instead of using a fixed scale
+  // This makes the chart adapt to the actual data range
+  const maxHours = Math.ceil(rawMaxHours) + 1;
+  console.log('Dynamic max hours set to:', maxHours, '(ceiling of', rawMaxHours, '+ 1)');
   
   // Generate dynamic Y-axis labels based on the max hours
-  // Use a smaller step size to make the scale more appropriate for the data
+  // Use a step size appropriate for the data range
   const yAxisLabels = [];
-  const yAxisStep = maxHours <= 2 ? 0.2 : maxHours <= 4 ? 0.5 : maxHours <= 8 ? 1 : 2;
-  // Ensure labels don't go beyond a reasonable max, calculate steps based on rawMaxHours
-  const numSteps = Math.ceil(rawMaxHours / yAxisStep);
-  for (let i = 1; i <= numSteps; i++) { // Start from 1 to avoid 0h here
+  // Determine appropriate step size based on the max hours
+  let yAxisStep;
+  if (maxHours <= 2) {
+    yAxisStep = 0.2;
+  } else if (maxHours <= 4) {
+    yAxisStep = 0.5;
+  } else if (maxHours <= 10) {
+    yAxisStep = 1;
+  } else {
+    yAxisStep = 2;
+  }
+  
+  // Generate labels from 0 to maxHours
+  for (let i = 1; i <= Math.floor(maxHours / yAxisStep); i++) {
     yAxisLabels.push((i * yAxisStep).toFixed(1).replace('.0', '')); // Format label
   }
+  console.log('Generated y-axis labels:', yAxisLabels, 'with step size:', yAxisStep);
 
   return (
     <div className="relative bg-gray-800 p-4 rounded-lg shadow-lg flex flex-col" style={{ height: '300px' }}> {/* Increased height slightly */}
@@ -138,6 +151,11 @@ const WeeklyView = ({ dailyHours }) => {
       <div className="flex-1 flex mb-6"> {/* Added margin-bottom for X-axis labels */} 
         {/* Y-axis labels - Align items to space them correctly */}
         <div className="flex flex-col justify-between w-10 text-right pr-2 text-xs text-gray-400">
+          {/* Add the maximum value at the top */}
+          <div className="h-0 relative">
+            <span className="absolute -top-1.5 right-2">{maxHours}h</span>
+          </div>
+          {/* Add intermediate labels */}
           {yAxisLabels.slice().reverse().map((label, index) => (
             <div key={index} className="h-0 relative">
               {/* Position label slightly above the line it corresponds to */} 
@@ -154,6 +172,9 @@ const WeeklyView = ({ dailyHours }) => {
         <div className="flex-1 relative">
           {/* Horizontal grid lines - Dynamically generated based on labels */} 
           <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+            {/* Top grid line for max value */}
+            <hr className="border-t border-gray-700" />
+            {/* Intermediate grid lines */}
             {yAxisLabels.map((_, index) => (
               <hr key={index} className="border-t border-gray-700" />
             ))}
