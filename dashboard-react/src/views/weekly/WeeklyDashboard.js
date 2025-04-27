@@ -15,25 +15,44 @@ const WeeklyDashboard = ({ date = new Date() }) => {
 
   useEffect(() => {
     const fetchWeeklyData = async () => {
+      console.log('[WeeklyDashboard] Fetching data for date:', date);
       try {
         const monday = getMondayOfWeek(new Date(date));
+        console.log('[WeeklyDashboard] Calculated Monday:', monday.toISOString().split('T')[0]);
         
         // Try to get data from Python backend first
         if (window.pyHandler) {
+          console.log('[WeeklyDashboard] window.pyHandler found. Attempting to call get_data...');
           try {
             const result = await window.pyHandler.get_data('week', monday.toISOString().split('T')[0]);
+            console.log('[WeeklyDashboard] Received result from pyHandler:', result);
+            
             if (result && Array.isArray(result)) {
-              setWeekData(result);
+              console.log('[WeeklyDashboard] pyHandler returned valid data. Processing...');
+              setWeekData(result); // Keep raw data if needed later
               const weeklyStats = calculateWeeklyStats(result);
               setStats(weeklyStats);
               return;
+            } else {
+              console.warn('[WeeklyDashboard] pyHandler returned invalid data:', result);
+              // Proceed to fallback
             }
           } catch (error) {
-            console.warn('Failed to get data from Python backend:', error);
+            console.error('[WeeklyDashboard] Error calling pyHandler.get_data:', error);
+            // Proceed to fallback
           }
+        } else {
+          console.warn('[WeeklyDashboard] window.pyHandler not found. Using CSV fallback.');
         }
 
-        // Fallback: Fetch each day's data from CSV
+        // Fallback or if pyHandler failed
+        // Check if stats were already set by pyHandler
+        if (stats.dailyStats.length > 0) {
+          console.log('[WeeklyDashboard] Data already processed by pyHandler. Skipping fallback.');
+          return; 
+        }
+        
+        console.log('[WeeklyDashboard] Starting CSV fallback...');
         const weeklyData = [];
         for (let i = 0; i < 7; i++) {
           const currentDate = new Date(monday);
@@ -72,21 +91,40 @@ const WeeklyDashboard = ({ date = new Date() }) => {
               date: formattedDate,
               focusWork: 0,
               focusLeisure: 0,
-              break: 0
+              break: 0,
+              inactive: 0
             });
           }
         }
 
-        setWeekData(weeklyData);
+        console.log('[WeeklyDashboard] Finished CSV fallback. Processing data:', weeklyData);
+        setWeekData(weeklyData); // Keep raw data if needed later
         const weeklyStats = calculateWeeklyStats(weeklyData);
+        console.log('[WeeklyDashboard] Calculated weekly stats from CSV:', weeklyStats);
         setStats(weeklyStats);
       } catch (error) {
-        console.error('Error loading weekly data:', error);
+        console.error('[WeeklyDashboard] Error loading weekly data:', error);
       }
     };
 
-    fetchWeeklyData();
-  }, [date]);
+    // Check if pyHandler is ready before fetching
+    if (window.pyHandler) {
+      console.log('[WeeklyDashboard] pyHandler already available.');
+      fetchWeeklyData();
+    } else {
+      console.log('[WeeklyDashboard] Waiting for qtReady event...');
+      const handleQtReady = () => {
+        console.log('[WeeklyDashboard] qtReady event received.');
+        fetchWeeklyData();
+        document.removeEventListener('qtReady', handleQtReady);
+      };
+      document.addEventListener('qtReady', handleQtReady);
+      // Cleanup listener if component unmounts before event
+      return () => {
+        document.removeEventListener('qtReady', handleQtReady);
+      };
+    }
+  }, [date]); // Removed stats from dependency array to avoid re-triggering on stats update
 
   return (
     <div className="p-4">
