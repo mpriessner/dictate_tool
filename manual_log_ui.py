@@ -210,7 +210,34 @@ class ManualLogUI:
 
 def main():
     root = tk.Tk()
+    
+    # Set window to be topmost
+    root.attributes('-topmost', True)
+    root.lift()
+    
+    # Create the UI
     app = ManualLogUI(root)
+    
+    # Center the window
+    # First update to get actual window size
+    root.update_idletasks()
+    
+    # Get screen dimensions
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    
+    # Get window dimensions
+    window_width = root.winfo_width()
+    window_height = root.winfo_height()
+    
+    # Calculate center position
+    x = (screen_width - window_width) // 2
+    y = (screen_height - window_height) // 2
+    
+    # Set window position
+    root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    
+    # Start the main loop
     root.mainloop()
 
 if __name__ == "__main__":
