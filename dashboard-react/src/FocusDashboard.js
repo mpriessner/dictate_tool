@@ -8,7 +8,7 @@ const getMondayOfWeek = (d) => {
 };
 
 // Timeline Component
-const Timeline = ({ intervals }) => {
+const Timeline = ({ intervals, modeColors }) => {
   const formatHour = (hour) => {
     return hour.toString().padStart(2, '0');
   };
@@ -26,30 +26,16 @@ const Timeline = ({ intervals }) => {
           const startHour = interval.start.getHours() + interval.start.getMinutes() / 60;
           const endHour = interval.end.getHours() + interval.end.getMinutes() / 60;
           
-          const startPercent = (startHour / 24) * 100;
-          const width = ((endHour - startHour) / 24) * 100;
-          
-          // Determine color based on mode
-          let bgColorClass = 'bg-gray-400'; // Default for breaks
-          if (interval.focus) {
-            if (interval.mode === 'work') {
-              bgColorClass = 'bg-blue-500'; // Blue for work focus
-            } else if (interval.mode === 'leisure') {
-              bgColorClass = 'bg-amber-400'; // Amber/yellow for leisure focus
-            } else {
-              bgColorClass = 'bg-blue-400'; // Fallback for old data without mode
-            }
-          }
-          
           return (
             <div
               key={index}
-              className={`absolute h-8 ${bgColorClass}`}
+              className="absolute h-full"
               style={{
-                left: `${startPercent}%`,
-                width: `${Math.max(0.5, width)}%`
+                left: `${(startHour / 24) * 100}%`,
+                width: `${((endHour - startHour) / 24) * 100}%`,
+                backgroundColor: modeColors[interval.mode]
               }}
-              title={`${interval.start.toLocaleTimeString()} - ${interval.end.toLocaleTimeString()} (${interval.mode || (interval.focus ? 'focus' : 'break')})`}
+              title={`${interval.start.toLocaleTimeString()} - ${interval.end.toLocaleTimeString()} (${interval.mode})`}
             />
           );
         })}
@@ -475,11 +461,13 @@ const FocusDashboard = () => {
   const [pyHandlerReady, setPyHandlerReady] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Set up colors for category bars
-  const categoryColors = [
-    "#F2CDCD", "#DDB6F2", "#F5C2E7", "#E8A2AF", "#F28FAD",
-    "#ABE9B3", "#FAE3B0", "#F8BD96", "#EE99A0", "#89DCEB"
-  ];
+  // Activity mode colors
+  const MODE_COLORS = {
+    work: '#2196F3',    // Blue
+    leisure: '#FFCA28', // Yellow/Amber
+    break: '#00BCD4',   // Cyan
+    inactive: '#9E9E9E' // Gray
+  };
 
   // Listen for the pyHandlerReady event
   useEffect(() => {
@@ -559,12 +547,53 @@ const FocusDashboard = () => {
         
         // Convert interval ISO strings to Date objects
         if (result.intervals && Array.isArray(result.intervals)) {
-          const processedIntervals = result.intervals.map(interval => ({
-            start: new Date(interval.start),
-            end: new Date(interval.end),
-            focus: interval.focus,
-            mode: interval.mode || (interval.focus ? 'work' : 'break') // Default to 'work' for backward compatibility
-          }));
+          // Process intervals with proper mode handling and inactive detection
+          const processedIntervals = [];
+          let lastEndTime = new Date(date);
+          lastEndTime.setHours(0, 0, 0, 0);
+
+          // Sort intervals by start time
+          const sortedIntervals = result.intervals.sort((a, b) => 
+            new Date(a.start) - new Date(b.start)
+          );
+
+          // Process each interval
+          sortedIntervals.forEach(interval => {
+            const startTime = new Date(interval.start);
+            const endTime = new Date(interval.end);
+
+            // Add inactive period if gap > 1 hour
+            if (startTime - lastEndTime > 3600000) { // 1 hour in milliseconds
+              processedIntervals.push({
+                start: new Date(lastEndTime),
+                end: new Date(startTime),
+                mode: 'inactive'
+              });
+            }
+
+            // Add the actual activity interval
+            processedIntervals.push({
+              start: startTime,
+              end: endTime,
+              mode: interval.active === 1 ? 'work' : 
+                    interval.active === 2 ? 'leisure' : 
+                    interval.active === 0 ? 'break' : 'inactive'
+            });
+
+            lastEndTime = endTime;
+          });
+
+          // Add final inactive period if needed
+          const dayEnd = new Date(date);
+          dayEnd.setHours(23, 59, 59, 999);
+          if (dayEnd - lastEndTime > 3600000) {
+            processedIntervals.push({
+              start: new Date(lastEndTime),
+              end: dayEnd,
+              mode: 'inactive'
+            });
+          }
+
           result.intervals = processedIntervals;
           console.log('Processed intervals:', processedIntervals);
         }
@@ -703,7 +732,7 @@ const FocusDashboard = () => {
       {mode === 'day' && data.intervals && (
         <div className="p-4 mb-4 bg-gray-800 rounded-lg">
           <h2 className="text-lg font-bold mb-2">Calendar (sessions)</h2>
-          <Timeline intervals={data.intervals} />
+          <Timeline intervals={data.intervals} modeColors={MODE_COLORS} />
         </div>
       )}
       
