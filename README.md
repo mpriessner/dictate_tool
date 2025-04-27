@@ -1,15 +1,19 @@
-# Dictation Tool
+# Dictation and Activity Tracking Tool
 
-A Python-based speech-to-text application that allows users to dictate text using their microphone and automatically paste it where needed.
+A combined tool that provides:
+1. Activity tracking to log your work and leisure focus time
+2. Voice assistant features for dictation, email composition, and quick Q&A
+
+> **Note**: The dashboard visualization component is currently under development. While the activity tracking works and logs data correctly, the dashboard interface needs work. The core functionality remains usable for tracking activities.
 
 ## Installation
 
 ### Prerequisites
-- Windows OS
+- macOS or Windows
 - Python 3.12
 - Working microphone
 - Internet connection
-- OpenAI API key
+- OpenAI API key (for voice assistant features)
 
 ### Setup Instructions
 
@@ -45,17 +49,26 @@ A Python-based speech-to-text application that allows users to dictate text usin
 
 ## Usage
 
-1. **Start the Application**
+### Activity Tracking
+1. **Start the Focus Timer**
+   ```bash
+   python focus_timer.py
+   ```
+   This will track your work and leisure activities, saving logs to the `focus_logs` directory.
+
+### Voice Assistant
+1. **Start the Dictation Tool**
    ```bash
    python dictate_app.py
    ```
 
-2. **Using the Tool**
+2. **Using Voice Features**
    - Click and hold the "Press and Hold to Record" button
    - Speak clearly into your microphone
    - Release the button when done speaking
    - Within 2 seconds, click where you want the text to appear
    - The transcribed text will be automatically pasted
+   - You can also ask questions or request email composition
 
 ## Troubleshooting
 

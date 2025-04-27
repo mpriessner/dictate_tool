@@ -199,7 +199,7 @@ const processRawActivityData = (data) => {
       mode: 'inactive'
     });
   }
-
+  
   return mergedSlots;
 };
 
@@ -213,8 +213,14 @@ export const calculateDailyStats = (intervals) => {
   };
 
   intervals.forEach(interval => {
-    const duration = (interval.end - interval.start) / (1000 * 60 * 60); // Convert to hours
-    stats[interval.mode] += duration;
+    // Calculate duration in milliseconds
+    const durationMs = interval.end.getTime() - interval.start.getTime();
+    
+    // Convert milliseconds to hours (3600000 ms = 1 hour)
+    const durationHours = durationMs / 3600000;
+    
+    // Add to the appropriate category
+    stats[interval.mode] += durationHours;
   });
 
   return {

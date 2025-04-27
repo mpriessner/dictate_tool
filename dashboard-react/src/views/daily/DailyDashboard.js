@@ -32,17 +32,11 @@ const DailyDashboard = ({ date = new Date() }) => {
               const processedIntervals = processIntervals(result);
               setIntervals(processedIntervals);
 
-              // Set statistics directly from Python result
-              setStats({
-                work: result.focusWork || 0,
-                leisure: result.focusLeisure || 0,
-                break: result.break || 0,
-                inactive: result.inactive || 0,
-                total: (result.focusWork || 0) + (result.focusLeisure || 0),
-                totalWithBreaks: (result.focusWork || 0) + (result.focusLeisure || 0) + (result.break || 0)
-              });
+              // Calculate statistics in JavaScript instead of using Python values
+              const dailyStats = calculateDailyStats(processedIntervals);
+              setStats(dailyStats);
               
-              // Set app usage data
+              // Still use Python's app usage data as it's not calculated in JavaScript
               setAppUsage(result.app_usage || {});
               return;
             }
