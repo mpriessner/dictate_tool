@@ -396,6 +396,11 @@ class FocusTimerWindow(QMainWindow):
         # Add separator
         menu.addSeparator()
         
+        # Add Manual Log option
+        add_log_action = QAction("Add Manual Log", self)
+        add_log_action.triggered.connect(lambda: print("Add Manual Log clicked - to be implemented"))
+        menu.addAction(add_log_action)
+        
         # Add separator
         menu.addSeparator()
         

@@ -473,6 +473,7 @@ const FocusDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pyHandlerReady, setPyHandlerReady] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
 
   // Set up colors for category bars
   const categoryColors = [
@@ -621,25 +622,59 @@ const FocusDashboard = () => {
     <div className="min-h-screen bg-gray-900 text-white p-6">
       {/* Header with mode selector and date navigation */}
       <div className="flex justify-between items-center mb-8">
-        <div className="flex space-x-4">
+        <div className="flex space-x-4 relative">
           <button 
             className={`px-4 py-2 rounded-md ${mode === 'day' ? 'bg-blue-500' : 'bg-gray-700'}`}
-            onClick={() => setMode('day')}
+            onClick={() => {
+              setMode('day');
+              setShowDropdown(false);
+            }}
           >
             Day
           </button>
           <button 
             className={`px-4 py-2 rounded-md ${mode === 'week' ? 'bg-blue-500' : 'bg-gray-700'}`}
-            onClick={() => setMode('week')}
+            onClick={() => {
+              setMode('week');
+              setShowDropdown(false);
+            }}
           >
             Week
           </button>
           <button 
             className={`px-4 py-2 rounded-md ${mode === 'month' ? 'bg-blue-500' : 'bg-gray-700'}`}
-            onClick={() => setMode('month')}
+            onClick={() => {
+              setMode('month');
+              setShowDropdown(false);
+            }}
           >
             Month
           </button>
+          <div className="relative">
+            <button 
+              className="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600"
+              onClick={() => setShowDropdown(!showDropdown)}
+            >
+              Menu
+            </button>
+            {showDropdown && (
+              <div className="absolute left-0 mt-2 w-48 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50">
+                <div className="py-1" role="menu" aria-orientation="vertical">
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+                    role="menuitem"
+                    onClick={() => {
+                      console.log('Add Manual Log clicked - functionality to be implemented');
+                      setShowDropdown(false);
+                    }}
+                  >
+                    Add Manual Log
+                  </button>
+                  {/* Add more menu items here as needed */}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center space-x-4">
@@ -685,10 +720,16 @@ const FocusDashboard = () => {
                 
                 {/* Calculate total time and percentages */}
                 {(() => {
-                  const totalTime = (data.focusWork || 0) + (data.focusLeisure || 0) + (data.inactive || 0) + data.break;
+                  // Calculate total time based on view mode
+                  const showInactive = mode === 'day';
+                  const totalTime = showInactive
+                    ? (data.focusWork || 0) + (data.focusLeisure || 0) + (data.inactive || 0) + data.break
+                    : (data.focusWork || 0) + (data.focusLeisure || 0) + data.break;
+                  
+                  // Calculate percentages
                   const workPercent = totalTime > 0 ? (data.focusWork || 0) / totalTime : 0;
                   const leisurePercent = totalTime > 0 ? (data.focusLeisure || 0) / totalTime : 0;
-                  const inactivePercent = totalTime > 0 ? (data.inactive || 0) / totalTime : 0;
+                  const inactivePercent = showInactive && totalTime > 0 ? (data.inactive || 0) / totalTime : 0;
                   const breakPercent = totalTime > 0 ? data.break / totalTime : 0;
                   
                   // Calculate stroke dash values
@@ -698,11 +739,15 @@ const FocusDashboard = () => {
                   const inactiveDash = inactivePercent * circumference;
                   const breakDash = breakPercent * circumference;
                   
-                  // Calculate offsets
+                  // Calculate offsets based on view mode
                   const breakOffset = 0;
-                  const inactiveOffset = -1 * breakDash;
-                  const leisureOffset = -1 * (breakDash + inactiveDash);
-                  const workOffset = -1 * (breakDash + inactiveDash + leisureDash);
+                  const inactiveOffset = showInactive ? -1 * breakDash : 0;
+                  const leisureOffset = showInactive 
+                    ? -1 * (breakDash + inactiveDash)
+                    : -1 * breakDash;
+                  const workOffset = showInactive 
+                    ? -1 * (breakDash + inactiveDash + leisureDash)
+                    : -1 * (breakDash + leisureDash);
                   
                   return (
                     <>
@@ -721,8 +766,8 @@ const FocusDashboard = () => {
                         />
                       )}
                       
-                      {/* Inactive segment */}
-                      {data.inactive > 0 && (
+                      {/* Inactive segment - only in day view */}
+                      {mode === 'day' && data.inactive > 0 && (
                         <circle 
                           cx="50" 
                           cy="50" 
@@ -797,11 +842,13 @@ const FocusDashboard = () => {
               <span className="font-medium">Leisure: {Math.floor((data.focusLeisure || 0) / 60)}h {(data.focusLeisure || 0) % 60}m</span>
             </div>
             
-            {/* Inactive category */}
-            <div className="flex items-center bg-gray-700 px-3 py-2 rounded-md">
-              <div className="w-5 h-5 bg-gray-600 mr-2 rounded-sm"></div>
-              <span className="font-medium">Inactive: {Math.floor((data.inactive || 0) / 60)}h {(data.inactive || 0) % 60}m</span>
-            </div>
+            {/* Inactive category - only show in day view */}
+            {mode === 'day' && (
+              <div className="flex items-center bg-gray-700 px-3 py-2 rounded-md">
+                <div className="w-5 h-5 bg-gray-600 mr-2 rounded-sm"></div>
+                <span className="font-medium">Inactive: {Math.floor((data.inactive || 0) / 60)}h {(data.inactive || 0) % 60}m</span>
+              </div>
+            )}
             
             {/* Break category */}
             <div className="flex items-center bg-gray-700 px-3 py-2 rounded-md">
