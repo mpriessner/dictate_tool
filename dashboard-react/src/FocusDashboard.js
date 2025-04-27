@@ -86,9 +86,13 @@ const WeeklyView = ({ dailyHours }) => {
         const workHours = parseFloat(day.focusWorkHours) || 0;
         const leisureHours = parseFloat(day.focusLeisureHours) || 0;
         const breakHours = parseFloat(day.breakHours) || 0;
-        return workHours + leisureHours + breakHours;
+        console.log(`Day data: work=${workHours}h, leisure=${leisureHours}h, break=${breakHours}h`);
+        const total = workHours + leisureHours + breakHours;
+        console.log(`Total hours: ${total}h`);
+        return total;
       }))
     : 0;
+  console.log('Raw max hours:', rawMaxHours);
     
   // Calculate average focus hours from days with data
   const nonZeroDays = days.filter(day => day.focusHours > 0);
@@ -172,22 +176,31 @@ const WeeklyView = ({ dailyHours }) => {
           {/* Bars - FIXED: Changed display approach */}
           <div className="absolute inset-0 flex justify-around">
             {days.map((day, index) => {
-              const workHours = parseFloat(day.focusWorkHours) || 0;
-              const leisureHours = parseFloat(day.focusLeisureHours) || 0;
-              const breakHours = parseFloat(day.breakHours) || 0;
+              // Convert minutes to hours
+              const workHours = (parseFloat(day.focusWorkMinutes) || 0) / 60;
+              const leisureHours = (parseFloat(day.focusLeisureMinutes) || 0) / 60;
+              const breakHours = (parseFloat(day.breakMinutes) || 0) / 60;
+              const inactiveHours = (parseFloat(day.inactive) || 0) / 60;
               
               // Calculate heights as percentages of chartMaxY
               const workHeightPercent = chartMaxY > 0 ? (workHours / chartMaxY) * 100 : 0;
               const leisureHeightPercent = chartMaxY > 0 ? (leisureHours / chartMaxY) * 100 : 0;
               const breakHeightPercent = chartMaxY > 0 ? (breakHours / chartMaxY) * 100 : 0;
+              const inactiveHeightPercent = chartMaxY > 0 ? (inactiveHours / chartMaxY) * 100 : 0;
               
-              // FIXED: Calculate absolute heights instead of percentages
-              const totalHeight = 220; // Approximate pixel height of chart area
-              const workHeight = Math.max((workHeightPercent / 100) * totalHeight, workHours > 0 ? 2 : 0);
-              const leisureHeight = Math.max((leisureHeightPercent / 100) * totalHeight, leisureHours > 0 ? 2 : 0);
-              const breakHeight = Math.max((breakHeightPercent / 100) * totalHeight, breakHours > 0 ? 2 : 0);
+              console.log(`Bar heights for ${day.day}: work=${workHeightPercent.toFixed(1)}%, leisure=${leisureHeightPercent.toFixed(1)}%, break=${breakHeightPercent.toFixed(1)}%, inactive=${inactiveHeightPercent.toFixed(1)}%`);
+
+              // Calculate absolute heights with better minimum values
+              const totalHeight = 220; // Pixel height of chart area
+              const minBarHeight = 2; // Minimum height for visible bars
               
-              // FIXED: Calculate the total stack height
+              // Calculate proportional heights
+              const workHeight = Math.max(minBarHeight, (workHeightPercent / 100) * totalHeight);
+              const leisureHeight = Math.max(minBarHeight, (leisureHeightPercent / 100) * totalHeight);
+              const breakHeight = Math.max(minBarHeight, (breakHeightPercent / 100) * totalHeight);
+              const inactiveHeight = Math.max(minBarHeight, (inactiveHeightPercent / 100) * totalHeight);
+              
+              // Calculate stack height ensuring proper spacing
               const stackHeight = workHeight + leisureHeight + breakHeight;
               
               console.log(`Bar for ${day.day}: work=${workHours}h (${workHeight.toFixed(1)}px), ` +
@@ -199,12 +212,12 @@ const WeeklyView = ({ dailyHours }) => {
                 <div key={index} className="flex flex-col justify-end h-full" style={{ width: '14%' }}>
                   {/* FIXED: Stack the different bar types from bottom up */}
                   <div className="w-8 mx-auto flex flex-col-reverse">
-                    {/* FIXED: Position all three bars in a stack */}
+                    {/* Stack bars with improved visibility and spacing */}
                     <div className="relative" style={{ height: `${stackHeight}px` }}>
                       {/* Work focus time (bottom) */}
                       {workHours > 0 && (
                         <div 
-                          className="absolute bottom-0 w-full bg-blue-500"
+                          className="absolute bottom-0 w-full bg-blue-500 rounded-sm hover:opacity-90 transition-opacity"
                           style={{ height: `${workHeight}px` }}
                           title={`Work: ${workHours.toFixed(1)}h`}
                         />
@@ -213,7 +226,7 @@ const WeeklyView = ({ dailyHours }) => {
                       {/* Leisure focus time (middle) */}
                       {leisureHours > 0 && (
                         <div 
-                          className="absolute w-full bg-amber-400"
+                          className="absolute w-full bg-amber-400 rounded-sm hover:opacity-90 transition-opacity"
                           style={{ 
                             height: `${leisureHeight}px`,
                             bottom: `${workHeight}px`
@@ -222,15 +235,27 @@ const WeeklyView = ({ dailyHours }) => {
                         />
                       )}
                       
-                      {/* Break time (top) */}
+                      {/* Break time */}
                       {breakHours > 0 && (
                         <div 
-                          className="absolute w-full bg-cyan-400 rounded-t"
+                          className="absolute w-full bg-cyan-400 rounded-sm hover:opacity-90 transition-opacity"
                           style={{ 
                             height: `${breakHeight}px`,
                             bottom: `${workHeight + leisureHeight}px`
                           }}
                           title={`Break: ${breakHours.toFixed(1)}h`}
+                        />
+                      )}
+                      
+                      {/* Inactive time (top) */}
+                      {inactiveHours > 0 && (
+                        <div 
+                          className="absolute w-full bg-gray-400 rounded-sm hover:opacity-90 transition-opacity"
+                          style={{ 
+                            height: `${inactiveHeight}px`,
+                            bottom: `${workHeight + leisureHeight + breakHeight}px`
+                          }}
+                          title={`Inactive: ${inactiveHours.toFixed(1)}h`}
                         />
                       )}
                     </div>
@@ -261,6 +286,8 @@ const WeeklyView = ({ dailyHours }) => {
           <span>Leisure</span>
           <span className="w-3 h-3 bg-cyan-400 rounded-sm ml-2"></span>
           <span>Break</span>
+          <span className="w-3 h-3 bg-gray-400 rounded-sm ml-2"></span>
+          <span>Inactive</span>
         </div>
       </div>
     </div>

@@ -162,10 +162,12 @@ class SimpleDashboardHandler(QObject):
                         if gap > 120:  # More than 2 minutes
                             time_gap = True
                     
-                    # Determine if this should be considered a focus or break period
-                    # Count as break if we have 5+ consecutive inactive logs or a large time gap
-                    is_break = inactive_count >= 5 or time_gap
-                    is_focus = is_active or (not is_active and not is_break)  # is_active is true for both work and leisure
+                    # Determine if this should be considered a focus, break, or inactive period
+                    # Count as break if we have 5+ consecutive inactive logs or a time gap between 2-60 minutes
+                    # Count as inactive if the gap is more than 60 minutes
+                    is_break = (inactive_count >= 5 and not time_gap) or (time_gap and gap <= 3600)
+                    is_inactive = time_gap and gap > 3600  # More than 1 hour
+                    is_focus = is_active or (not is_active and not is_break and not is_inactive)  # is_active is true for both work and leisure
                     
                     # For interval creation, we consider it a focus period unless it's a confirmed break
                     current_state = not is_break  # True for focus, False for break
@@ -209,7 +211,11 @@ class SimpleDashboardHandler(QObject):
                                 data['inactive'] += inactive_time
                                 data['focus'] += work_time + leisure_time  # Total focus for compatibility
                             else:  # If it was a break interval
-                                data['break'] += interval_duration
+                                # Check if this was a break or inactive period
+                                if interval_duration <= 3600:  # Less than or equal to 1 hour
+                                    data['break'] += interval_duration
+                                else:
+                                    data['inactive'] += interval_duration
                                 
                             # Determine the mode for this interval
                             mode = 'break'
@@ -275,7 +281,7 @@ class SimpleDashboardHandler(QObject):
                         data['break'] += interval_duration
                         
                     # Determine the mode for this interval
-                    mode = 'break'
+                    mode = 'break' if interval_duration <= 3600 else 'inactive'
                     if current_focus:
                         # Check if this was a work or leisure interval
                         # Use the last known active state in this interval
