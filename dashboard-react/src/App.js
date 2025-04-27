@@ -1,10 +1,10 @@
 import React from 'react';
-import FocusDashboard from './FocusDashboard';
+import MainDashboard from './MainDashboard';
 
 function App() {
   return (
     <div className="App">
-      <FocusDashboard />
+      <MainDashboard />
     </div>
   );
 }
