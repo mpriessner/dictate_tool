@@ -35,13 +35,16 @@ class ManualLogUI:
         self.start_time_entry = ttk.Entry(time_frame, textvariable=self.start_time_var, width=10)
         self.start_time_entry.grid(row=1, column=1, padx=5, pady=5)
         
-        # Duration
-        ttk.Label(time_frame, text="Duration:").grid(row=1, column=2, padx=5, pady=5)
+        # Duration spinbox
+        duration_frame = ttk.Frame(time_frame)
+        duration_frame.grid(row=1, column=2, columnspan=3, padx=5, pady=5)
+        ttk.Label(duration_frame, text="Duration:").pack(side=tk.LEFT)
         self.duration_var = tk.StringVar(value="30")
-        durations = ["15", "30", "45", "60", "90", "120"]
-        self.duration_combo = ttk.Combobox(time_frame, textvariable=self.duration_var, values=durations, width=7)
-        self.duration_combo.grid(row=1, column=3, padx=5, pady=5)
-        ttk.Label(time_frame, text="minutes").grid(row=1, column=4, padx=(0,5), pady=5)
+        duration_spinbox = ttk.Spinbox(duration_frame, from_=15, to=240, increment=15,
+                                     textvariable=self.duration_var, width=5,
+                                     wrap=True)
+        duration_spinbox.pack(side=tk.LEFT)
+        ttk.Label(duration_frame, text="minutes").pack(side=tk.LEFT)
         
         # Activity type frame
         type_frame = ttk.LabelFrame(root, text="Activity Type", padding="5 5 5 5")
