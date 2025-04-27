@@ -3,6 +3,7 @@
 
 import time
 import os
+import subprocess
 from datetime import datetime
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont, QIcon
@@ -398,7 +399,7 @@ class FocusTimerWindow(QMainWindow):
         
         # Add Manual Log option
         add_log_action = QAction("Add Manual Log", self)
-        add_log_action.triggered.connect(lambda: print("Add Manual Log clicked - to be implemented"))
+        add_log_action.triggered.connect(self.show_manual_log_ui)
         menu.addAction(add_log_action)
         
         # Add separator
@@ -456,6 +457,19 @@ class FocusTimerWindow(QMainWindow):
             
             # Update the UI
             self.update_display()
+    
+    def show_manual_log_ui(self):
+        """Launch the manual log UI as a separate process"""
+        # Get the path to the manual_log_ui.py script
+        script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        manual_log_path = os.path.join(script_dir, 'manual_log_ui.py')
+        
+        # Launch the script as a separate process
+        try:
+            subprocess.Popen(['python', manual_log_path])
+            print(f"Launched manual log UI: {manual_log_path}")
+        except Exception as e:
+            print(f"Error launching manual log UI: {e}")
     
     def log_activity(self, active, final=False, reset=False, pause=False, resume=False, restart=False):
         """Log the current activity state
