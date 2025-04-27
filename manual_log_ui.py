@@ -35,12 +35,13 @@ class ManualLogUI:
         self.start_time_entry = ttk.Entry(time_frame, textvariable=self.start_time_var, width=10)
         self.start_time_entry.grid(row=1, column=1, padx=5, pady=5)
         
-        # End time
-        ttk.Label(time_frame, text="End (HH:MM):").grid(row=1, column=2, padx=5, pady=5)
-        end_time = (datetime.now() + timedelta(minutes=30)).strftime('%H:%M')
-        self.end_time_var = tk.StringVar(value=end_time)
-        self.end_time_entry = ttk.Entry(time_frame, textvariable=self.end_time_var, width=10)
-        self.end_time_entry.grid(row=1, column=3, padx=5, pady=5)
+        # Duration
+        ttk.Label(time_frame, text="Duration:").grid(row=1, column=2, padx=5, pady=5)
+        self.duration_var = tk.StringVar(value="30")
+        durations = ["15", "30", "45", "60", "90", "120"]
+        self.duration_combo = ttk.Combobox(time_frame, textvariable=self.duration_var, values=durations, width=7)
+        self.duration_combo.grid(row=1, column=3, padx=5, pady=5)
+        ttk.Label(time_frame, text="minutes").grid(row=1, column=4, padx=(0,5), pady=5)
         
         # Activity type frame
         type_frame = ttk.LabelFrame(root, text="Activity Type", padding="5 5 5 5")
@@ -73,46 +74,28 @@ class ManualLogUI:
         self.status_label.grid(row=5, column=0, pady=5)
         
     def add_log(self):
+        # Get and validate inputs
+        date_str = self.date_var.get()
+        start_time_str = self.start_time_var.get()
+        duration_str = self.duration_var.get()
+        activity_type = self.activity_type.get()
+        note = self.note_var.get()
+        
         try:
-            # Get and validate inputs
-            date_str = self.date_var.get()
-            start_time_str = self.start_time_var.get()
-            end_time_str = self.end_time_var.get()
-            activity_type = self.activity_type.get()
-            note = self.note_var.get()
-            
-            # Create timestamps
-            start_time = datetime.strptime(f"{date_str} {start_time_str}:00", '%Y-%m-%d %H:%M:%S')
-            end_time = datetime.strptime(f"{date_str} {end_time_str}:00", '%Y-%m-%d %H:%M:%S')
-            
-            if end_time <= start_time:
-                raise ValueError("End time must be after start time")
-            
-            # Check for existing entries
-            log_file = os.path.join("/Users/mpriessner/windsurf_repos/dictate_tool/focus_logs", 
-                                   date_str, "activity_log.csv")
-            
-            if os.path.exists(log_file):
-                df = pd.read_csv(log_file)
-                if not df.empty:
-                    df['timestamp'] = pd.to_datetime(df['timestamp'])
-                    overlapping = df[(df['timestamp'] >= start_time) & 
-                                   (df['timestamp'] <= end_time)]
-                    
-                    if not overlapping.empty:
-                        if not messagebox.askyesno("Confirm Overwrite", 
-                            f"There are {len(overlapping)} existing entries in this time range. "
-                            "Do you want to overwrite them?"):
-                            return
+            # Parse date and time
+            start_time = datetime.strptime(f"{date_str} {start_time_str}", "%Y-%m-%d %H:%M")
+            duration_minutes = int(duration_str)
+            end_time = start_time + timedelta(minutes=duration_minutes)
             
             # Process the log file
-            if self.process_log_file(start_time, end_time, activity_type, note):
-                self.status_var.set("Log entries added successfully!")
-            else:
-                self.status_var.set("Error: Failed to add log entries")
+            self.process_log_file(start_time, end_time, activity_type, note)
+            
+            # Show success message
+            self.status_var.set("Log entry added successfully!")
+            self.root.after(3000, lambda: self.status_var.set(""))  # Clear after 3 seconds
             
         except ValueError as e:
-            self.status_var.set(f"Error: {str(e)}")
+            messagebox.showerror("Error", f"Invalid date, time, or duration format: {e}")
         except Exception as e:
             self.status_var.set(f"Error: {str(e)}")
     
