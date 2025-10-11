@@ -290,6 +290,12 @@ class FocusTimerWindow(QMainWindow):
         # Update the focus circle
         self.focus_widget.set_active(False)
         
+        # Update the focus time display to 00:00
+        self.focus_time_label.setText("00:00")
+        
+        # Update time display to ensure all stats are properly updated
+        self.update_time_display()
+        
         # Log the reset
         is_active = self.activity_tracker.is_active_in_window()
         self.log_activity(is_active, reset=True)

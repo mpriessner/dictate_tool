@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Focus Dashboard - Debug Mode</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="static/css/main.b0cd084c.css">
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script defer="defer" src="static/js/main.cf472ad6.js"></script>
+    <style>
+        #debug-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            font-family: monospace;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 9999;
+        }
+        #debug-logs {
+            margin: 0;
+            padding: 0;
+            list-style-type: none;
+        }
+        .debug-log {
+            margin-bottom: 5px;
+        }
+        .debug-error {
+            color: #ff6b6b;
+        }
+        .debug-warning {
+            color: #feca57;
+        }
+        .debug-info {
+            color: #1dd1a1;
+        }
+    </style>
+    <script>
+        // Create debug panel
+        window.addEventListener('DOMContentLoaded', function() {
+            const debugPanel = document.createElement('div');
+            debugPanel.id = 'debug-panel';
+            
+            const heading = document.createElement('h3');
+            heading.textContent = 'Debug Console';
+            heading.style.margin = '0 0 10px 0';
+            
+            const logsList = document.createElement('ul');
+            logsList.id = 'debug-logs';
+            
+            debugPanel.appendChild(heading);
+            debugPanel.appendChild(logsList);
+            document.body.appendChild(debugPanel);
+            
+            // Capture console messages
+            const originalConsoleLog = console.log;
+            const originalConsoleWarn = console.warn;
+            const originalConsoleError = console.error;
+            
+            function addLogToPanel(type, args) {
+                const logItem = document.createElement('li');
+                logItem.className = `debug-${type}`;
+                logItem.textContent = Array.from(args).map(arg => {
+                    if (typeof arg === 'object') {
+                        try {
+                            return JSON.stringify(arg);
+                        } catch (e) {
+                            return String(arg);
+                        }
+                    }
+                    return String(arg);
+                }).join(' ');
+                
+                const logs = document.getElementById('debug-logs');
+                if (logs) {
+                    logs.appendChild(logItem);
+                    debugPanel.scrollTop = debugPanel.scrollHeight;
+                }
+            }
+            
+            console.log = function() {
+                addLogToPanel('info', arguments);
+                originalConsoleLog.apply(console, arguments);
+            };
+            
+            console.warn = function() {
+                addLogToPanel('warning', arguments);
+                originalConsoleWarn.apply(console, arguments);
+            };
+            
+            console.error = function() {
+                addLogToPanel('error', arguments);
+                originalConsoleError.apply(console, arguments);
+            };
+            
+            // Capture global errors
+            window.addEventListener('error', function(e) {
+                addLogToPanel('error', [`ERROR: ${e.message} at ${e.filename}:${e.lineno}:${e.colno}`]);
+            });
+            
+            // Capture unhandled promise rejections
+            window.addEventListener('unhandledrejection', function(e) {
+                addLogToPanel('error', [`UNHANDLED PROMISE REJECTION: ${e.reason}`]);
+            });
+        });
+        
+        // Initialize the Qt WebChannel when the document is loaded
+        document.addEventListener("DOMContentLoaded", function() {
+            console.log("DOM loaded, initializing Qt WebChannel...");
+            try {
+                new QWebChannel(qt.webChannelTransport, function(channel) {
+                    // Make the Python handler available globally as window.pyHandler
+                    window.pyHandler = channel.objects.pyHandler;
+                    console.log("Qt WebChannel initialized, Python handler available");
+                    
+                    // Dispatch an event to notify React that the bridge is ready
+                    const event = new CustomEvent('qtReady');
+                    document.dispatchEvent(event);
+                });
+            } catch (error) {
+                console.error("Error initializing Qt WebChannel:", error);
+            }
+        });
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+</body>
+</html>

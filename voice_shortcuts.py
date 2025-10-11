@@ -24,9 +24,18 @@ import traceback
 HAS_GEMINI = False
 try:
     import google.generativeai as genai
+    from google.generativeai.types import HarmCategory, HarmBlockThreshold
     HAS_GEMINI = True
 except ImportError:
     print("Note: google-generativeai module not found. Gemini fallback will not be available.")
+
+# Try to import ElevenLabs API
+HAS_ELEVENLABS = False
+try:
+    from elevenlabs.client import ElevenLabs
+    HAS_ELEVENLABS = True
+except ImportError:
+    print("Note: elevenlabs module not found. ElevenLabs transcription will not be available.")
 
 # ───────────────────────── CONFIG & PROMPTS ─────────────────────────
 SAMPLE_RATE   = 16000
@@ -35,22 +44,35 @@ VOICE_RATE    = int(os.getenv("VOICE_RATE", "220"))
 
 # AI Model Configuration
 CLAUDE_MODEL  = "claude-3-7-sonnet-20250219"
-GEMINI_MODEL  = "gemini-1.5-flash" # Use gemini-1.5-flash instead of 2.5-flash
+GEMINI_MODEL  = "gemini-1.5-flash" # Use gemini-1.5-flash for LLM responses
+GEMINI_TRANSCRIPTION_MODEL = "gemini-2.0-flash-exp"  # Use Gemini 2.0 Flash for audio transcription
 OPENAI_MODEL  = "gpt-4o"
+ELEVENLABS_TRANSCRIPTION_MODEL = "scribe_v1"  # ElevenLabs Speech-to-Text model
 TEMP          = 0.3
+
+# Transcription timeout (in seconds)
+TRANSCRIPTION_TIMEOUT = 15
 
 # Initialize Gemini API if available
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY")
 
+# Initialize ElevenLabs API if available
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+
 # Debug environment variables
 print(f"GEMINI_API_KEY present: {bool(os.getenv('GEMINI_API_KEY'))}")
-print(f"GOOGLE_API_KEY present: {bool(os.getenv('GOOGLE_API_KEY'))}")
-print(f"GOOGLE_GENERATIVE_AI_API_KEY present: {bool(os.getenv('GOOGLE_GENERATIVE_AI_API_KEY'))}")
-print(f"Final GEMINI_API_KEY value present: {bool(GEMINI_API_KEY)}")
+print(f"ELEVENLABS_API_KEY present: {bool(ELEVENLABS_API_KEY)}")
 
 if HAS_GEMINI and GEMINI_API_KEY:
-    print(f"Gemini API key found and configured")
+    print(f"🤖 Gemini API key found and configured")
     genai.configure(api_key=GEMINI_API_KEY)
+
+if HAS_ELEVENLABS and ELEVENLABS_API_KEY:
+    print(f"🎤 ElevenLabs API key found and configured")
+    ELEVENLABS_AVAILABLE = True
+else:
+    ELEVENLABS_AVAILABLE = False
+    print("⚠️ ElevenLabs transcription disabled - API key not found or module not installed")
 
 # keyboard combos - support both backtick (`) and greater-than (>) as triggers
 TRIGGER_KEYS = [keyboard.KeyCode.from_char('`'), keyboard.KeyCode.from_char('<')]
@@ -67,6 +89,7 @@ def make_combo(*nums):
 COMBO_DICT = make_combo('3')    # ` or > + 3 for dictation
 COMBO_TEXT = make_combo('1')    # ` or > + 1 for writing
 COMBO_SPOKEN = make_combo('2')  # ` or > + 2 for speaking
+COMBO_CLEANUP = make_combo('4') # ` or > + 4 for text cleanup
 
 # writing assistant prompt  (for ` + 1)
 PROMPT_TEXT = """
@@ -114,6 +137,26 @@ You are Martin's AI assistant. Provide clear answers to verbal questions.
 6. No meta-commentary or preambles like "here's a short answer" or "in summary".
 
 7. If no detail level keyword is specified, default to the shortest, most concise response.
+"""
+
+# text cleanup and summarization prompt (for ` + 4)
+PROMPT_CLEANUP = """
+You are a text processing assistant that cleans and compacts text for efficient LLM consumption.
+
+Your task is to take the provided text (which may contain terminal output, debug logs, code, data, or mixed content) and transform it into a clean, concise format suitable for feeding to another LLM.
+
+RULES:
+1. **Remove noise**: Strip out debug logs, stack traces, repetitive terminal output, timestamps, file paths that aren't essential
+2. **Preserve code**: Keep code blocks intact and properly formatted
+3. **Preserve data**: Keep structured data (JSON, tables, lists) but remove redundant entries
+4. **Condense prose**: Summarize verbose explanations into key points
+5. **Maintain context**: Ensure the cleaned text retains all essential information needed to understand the content
+6. **No meta-commentary**: Do NOT add introductions like "Here's the cleaned text:" - just output the cleaned content directly
+7. **Format for clarity**: Use markdown formatting (headers, lists, code blocks) to organize the output
+
+If a voice instruction is provided, use it to guide what to focus on or what aspects to emphasize in the cleanup.
+
+Output ONLY the cleaned and compacted text, ready to be pasted.
 """
 
 # ───────────────────────── HELPERS ─────────────────────────
@@ -332,6 +375,123 @@ def get_ai_response(sys_prompt, msgs):
     # If all APIs fail, return error message
     return "Sorry, all AI providers are currently unavailable. Please try again later."
 
+def transcribe_audio_with_elevenlabs(wav_path):
+    """
+    Transcribe audio using ElevenLabs Speech-to-Text API.
+    
+    Args:
+        wav_path (str): Path to the WAV audio file
+        
+    Returns:
+        str: Transcribed text, or None if transcription failed
+    """
+    if not HAS_ELEVENLABS:
+        print("❌ ElevenLabs API not available: Module not installed")
+        return None
+        
+    if not ELEVENLABS_API_KEY:
+        print("❌ ElevenLabs API not available: No API key found")
+        return None
+        
+    try:
+        print("🎤 Transcribing audio with ElevenLabs...")
+        
+        # Initialize ElevenLabs client
+        client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+        
+        # Open and read the audio file
+        with open(wav_path, "rb") as audio_file:
+            # Call the speech-to-text API
+            # Note: Don't pass language_code at all for auto-detection
+            transcription = client.speech_to_text.convert(
+                file=audio_file,
+                model_id=ELEVENLABS_TRANSCRIPTION_MODEL,
+                tag_audio_events=False,  # Don't tag events like laughter
+                diarize=False,  # Don't annotate speakers for single-speaker dictation
+            )
+        
+        # Extract the text from the response
+        if hasattr(transcription, 'text') and transcription.text:
+            print(f"✅ ElevenLabs transcription successful")
+            return transcription.text.strip()
+        else:
+            print(f"❌ ElevenLabs returned empty transcription")
+            return None
+            
+    except Exception as e:
+        print(f"❌ ElevenLabs transcription error: {str(e)}")
+        traceback.print_exc()
+        return None
+
+def transcribe_audio_with_gemini(wav_path):
+    """
+    Transcribe audio using Gemini API (fallback method).
+    
+    Args:
+        wav_path (str): Path to the WAV audio file
+        
+    Returns:
+        str: Transcribed text, or None if transcription failed
+    """
+    if not HAS_GEMINI:
+        print("❌ Gemini API not available: Module not installed")
+        return None
+        
+    if not GEMINI_API_KEY:
+        print("❌ Gemini API not available: No API key found")
+        return None
+        
+    try:
+        print("🎤 Transcribing audio with Gemini (fallback)...")
+        
+        # Upload audio file to Gemini
+        audio_file = genai.upload_file(wav_path)
+        
+        # Wait for file to be processed
+        while audio_file.state.name == "PROCESSING":
+            print("⏳ Processing audio file...")
+            time.sleep(0.5)
+            audio_file = genai.get_file(audio_file.name)
+        
+        if audio_file.state.name == "FAILED":
+            print("❌ Gemini audio processing failed")
+            return None
+            
+        # Initialize Gemini model for transcription
+        model = genai.GenerativeModel(GEMINI_TRANSCRIPTION_MODEL)
+        
+        # Generate transcription
+        response = model.generate_content(
+            [
+                "Please transcribe this audio file accurately. Provide only the transcription text without any additional commentary, formatting, or preamble. Just the raw transcribed text.",
+                audio_file
+            ],
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            }
+        )
+        
+        # Clean up uploaded file
+        try:
+            genai.delete_file(audio_file.name)
+        except:
+            pass
+            
+        if response.text:
+            print(f"✅ Gemini transcription successful")
+            return response.text.strip()
+        else:
+            print(f"❌ Gemini returned empty transcription")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Gemini transcription error: {str(e)}")
+        traceback.print_exc()
+        return None
+
 def speak(text, voice=VOICE, rate=VOICE_RATE):
     try:
         subprocess.run(["say", "-v", voice, "-r", str(rate), text])
@@ -401,8 +561,8 @@ class FocusCircle(QWidget):
                 
             # Toggle mode if parent is found
             if parent:
-                # Cycle through modes: text -> spoken -> dict -> text
-                modes = ["text", "spoken", "dict"]
+                # Cycle through modes: text -> spoken -> dict -> cleanup -> text
+                modes = ["text", "spoken", "dict", "cleanup"]
                 if parent.mode:
                     try:
                         idx = modes.index(parent.mode)
@@ -411,7 +571,7 @@ class FocusCircle(QWidget):
                         next_mode = "text"
                 else:
                     next_mode = "text"
-                
+
                 if hasattr(parent, "_toggle"):
                     parent._toggle(next_mode)
                 
@@ -440,6 +600,7 @@ class VoiceTool(QMainWindow):
         self.PRIMARY_COLOR = "#00CCFF"  # Blue
         self.SECONDARY_COLOR = "#FFCA28"  # Amber/yellow
         self.DICTATION_COLOR = "#FF5252"  # Red
+        self.CLEANUP_COLOR = "#34C759"  # Green
         
         self._setup_ui()
         self._hotkey()
@@ -532,14 +693,18 @@ class VoiceTool(QMainWindow):
         write_action = QAction("Write Mode (` + 1)", self)
         write_action.triggered.connect(lambda: self._toggle("text"))
         menu.addAction(write_action)
-        
+
         speak_action = QAction("Speak Mode (` + 2)", self)
         speak_action.triggered.connect(lambda: self._toggle("spoken"))
         menu.addAction(speak_action)
-        
+
         dict_action = QAction("Dictation Mode (` + 3)", self)
         dict_action.triggered.connect(lambda: self._toggle("dict"))
         menu.addAction(dict_action)
+
+        cleanup_action = QAction("Cleanup Mode (` + 4)", self)
+        cleanup_action.triggered.connect(lambda: self._toggle("cleanup"))
+        menu.addAction(cleanup_action)
         
         # Speech rate submenu
         rate_menu = QMenu("Speech Rate", self)
@@ -622,7 +787,7 @@ class VoiceTool(QMainWindow):
     def _hotkey(self):
         current = set()
         def on_press(k):
-            if k is not None and (k in TRIGGER_KEYS or (hasattr(k, 'char') and k.char is not None and k.char in '123')):
+            if k is not None and (k in TRIGGER_KEYS or (hasattr(k, 'char') and k.char is not None and k.char in '1234')):
                 current.add(k)
                 if any(all(k in current for k in combo) for combo in COMBO_DICT):
                     self._toggle("dict")
@@ -630,6 +795,8 @@ class VoiceTool(QMainWindow):
                     self._toggle("text")
                 elif any(all(k in current for k in combo) for combo in COMBO_SPOKEN):
                     self._toggle("spoken")
+                elif any(all(k in current for k in combo) for combo in COMBO_CLEANUP):
+                    self._toggle("cleanup")
         
         def on_release(k):
             try: current.remove(k)
@@ -661,7 +828,11 @@ class VoiceTool(QMainWindow):
             self.focus_widget.color = QColor(self.DICTATION_COLOR)
             self.status_text.setStyleSheet(f"color: {self.DICTATION_COLOR};")
             self.status_text.setText("Dictate")
-        
+        elif mode == "cleanup":
+            self.focus_widget.color = QColor(self.CLEANUP_COLOR)
+            self.status_text.setStyleSheet(f"color: {self.CLEANUP_COLOR};")
+            self.status_text.setText("Cleanup")
+
         self.focus_widget.update()
         
         # Start recording
@@ -700,22 +871,26 @@ class VoiceTool(QMainWindow):
                     wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(SAMPLE_RATE)
                     wf.writeframes((audio*32767).astype(np.int16).tobytes())
                 wav_path = f.name
-                
+            
+            # Transcribe audio using ElevenLabs API with Gemini fallback
             try:
-                # Try the new client first (OpenAI v1.0+) with timeout
-                client = openai.OpenAI(timeout=10)  # 10 second timeout for transcription
-                with open(wav_path, "rb") as af:
-                    response = client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=af
-                    )
-                    question = response.text
-            except (AttributeError, TypeError):
-                # Fall back to legacy client
-                with open(wav_path, "rb") as af:
-                    question = openai.Audio.transcribe("whisper-1", af)["text"]
+                # Try ElevenLabs first
+                question = transcribe_audio_with_elevenlabs(wav_path)
+                
+                # If ElevenLabs fails, try Gemini as fallback
+                if not question:
+                    print("🔄 ElevenLabs failed, trying Gemini fallback...")
+                    question = transcribe_audio_with_gemini(wav_path)
+                
+                if not question:
+                    self.status_text.setText("Transcription failed")
+                    return
             finally:
-                os.unlink(wav_path)
+                # Clean up the temporary WAV file
+                try:
+                    os.unlink(wav_path)
+                except:
+                    pass
             
             # Get clipboard content
             clip = grab_clipboard()
@@ -732,12 +907,18 @@ class VoiceTool(QMainWindow):
                 return
 
             # --- AI response with fallback mechanism
-            sys_prompt = PROMPT_TEXT if self.mode == "text" else PROMPT_SPOKEN
+            if self.mode == "cleanup":
+                sys_prompt = PROMPT_CLEANUP
+            elif self.mode == "text":
+                sys_prompt = PROMPT_TEXT
+            else:  # spoken mode
+                sys_prompt = PROMPT_SPOKEN
+
             self.status_text.setText("Querying AI services...")
             answer = get_ai_response(sys_prompt, build_messages(clip, question))
-            
-            if self.mode == "text":
-                # For text mode, paste the answer
+
+            if self.mode == "text" or self.mode == "cleanup":
+                # For text and cleanup modes, paste the answer
                 self._paste(answer)    # paste after deleting trigger keys
                 self.status_text.setText("Done.")
             else:  # spoken mode
@@ -793,32 +974,51 @@ class VoiceTool(QMainWindow):
 
 # ───────────────────────────── main ────────────────────────
 def main():
-    # Check for required API keys (at least one LLM API key is required)
+    # Check for required API keys
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
     has_gemini = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY"))
     has_openai = bool(os.getenv("OPENAI_API_KEY"))
+    has_elevenlabs = bool(ELEVENLABS_API_KEY)
+    
+    # ElevenLabs is now PRIMARY for transcription, with Gemini as fallback
+    if not has_elevenlabs:
+        print("Warning: ELEVENLABS_API_KEY not found. ElevenLabs transcription will not be available.")
+        if not has_gemini:
+            print("Error: Neither ELEVENLABS_API_KEY nor GEMINI_API_KEY found.")
+            print("At least one transcription API key is required.")
+            print("Please add ELEVENLABS_API_KEY or GEMINI_API_KEY to your .env file.")
+            return
+        else:
+            print("Using Gemini as primary transcription method.")
+    
+    if not HAS_ELEVENLABS and not HAS_GEMINI:
+        print("Error: Neither elevenlabs nor google-generativeai module installed.")
+        print("Please install at least one: pip install elevenlabs OR pip install google-generativeai")
+        return
+    
+    # Check for LLM API keys (at least one is required)
+    if not has_anthropic:
+        print("Warning: ANTHROPIC_API_KEY not set. Claude will not be available.")
     
     if not has_openai:
         print("Warning: OPENAI_API_KEY not set. OpenAI fallback will not be available.")
     
-    if not has_anthropic:
-        print("Warning: ANTHROPIC_API_KEY not set. Claude will not be available.")
-    
-    if not has_gemini:
-        print("Warning: GOOGLE_API_KEY not set. Gemini fallback will not be available.")
-    
-    # We need at least one LLM API key and the OpenAI key for Whisper
-    if not has_openai:
-        print("Error: OPENAI_API_KEY is required for Whisper transcription.")
-        return
-        
+    # We need at least one LLM API key for text processing
     if not (has_anthropic or has_gemini or has_openai):
         print("Error: At least one LLM API key (ANTHROPIC_API_KEY, GOOGLE_API_KEY, or OPENAI_API_KEY) is required.")
         return
-    # Inform user about Gemini availability
-    if not HAS_GEMINI:
-        print("Note: To enable Gemini fallback, install the package with:")
-        print("  pip install google-generativeai")
+    
+    print("\n" + "="*60)
+    print("🎤 Voice Shortcuts with ElevenLabs Transcription")
+    print("="*60)
+    if has_elevenlabs:
+        print(f"Transcription Primary: ElevenLabs {ELEVENLABS_TRANSCRIPTION_MODEL}")
+        if has_gemini:
+            print(f"Transcription Fallback: Gemini {GEMINI_TRANSCRIPTION_MODEL}")
+    else:
+        print(f"Transcription: Gemini {GEMINI_TRANSCRIPTION_MODEL}")
+    print(f"LLM Primary: {'Gemini' if has_gemini else 'Claude' if has_anthropic else 'OpenAI'}")
+    print("="*60 + "\n")
         
     app = QApplication(sys.argv)
     win = VoiceTool()
