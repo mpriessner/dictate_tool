@@ -141,22 +141,31 @@ You are Martin's AI assistant. Provide clear answers to verbal questions.
 
 # text cleanup and summarization prompt (for ` + 4)
 PROMPT_CLEANUP = """
-You are a text processing assistant that cleans and compacts text for efficient LLM consumption.
+You are a text processing assistant that transforms clipboard text according to user instructions.
 
-Your task is to take the provided text (which may contain terminal output, debug logs, code, data, or mixed content) and transform it into a clean, concise format suitable for feeding to another LLM.
+PRIMARY TASK: Follow the voice instruction precisely to transform the provided text.
 
-RULES:
-1. **Remove noise**: Strip out debug logs, stack traces, repetitive terminal output, timestamps, file paths that aren't essential
-2. **Preserve code**: Keep code blocks intact and properly formatted
-3. **Preserve data**: Keep structured data (JSON, tables, lists) but remove redundant entries
-4. **Condense prose**: Summarize verbose explanations into key points
-5. **Maintain context**: Ensure the cleaned text retains all essential information needed to understand the content
-6. **No meta-commentary**: Do NOT add introductions like "Here's the cleaned text:" - just output the cleaned content directly
-7. **Format for clarity**: Use markdown formatting (headers, lists, code blocks) to organize the output
+Common instructions you might receive:
+- "focus on errors" → Extract only error messages and key issues
+- "make bullet points" → Convert to concise bullet list format
+- "remove debug logs" → Strip debug output, keep essential info only
+- "summarize key points" → Condense to main takeaways
+- "clean for LLM" → Remove noise for efficient token usage
+- "extract code only" → Keep only code blocks, remove explanations
+- "simplify explanation" → Make complex text more understandable
 
-If a voice instruction is provided, use it to guide what to focus on or what aspects to emphasize in the cleanup.
+TRANSFORMATION RULES:
+1. **Follow voice instruction first** - The user's spoken command is the priority
+2. **Remove noise** - Strip debug logs, stack traces, repetitive terminal output, timestamps
+3. **Preserve code** - Keep code blocks intact and properly formatted
+4. **Preserve data** - Keep structured data (JSON, tables, lists) but remove redundancy
+5. **Maintain context** - Retain all essential information needed to understand the content
+6. **No meta-commentary** - Do NOT add introductions like "Here's the cleaned text:" - just output the transformed content directly
+7. **Format clearly** - Use markdown formatting (headers, lists, code blocks) for organization
 
-Output ONLY the cleaned and compacted text, ready to be pasted.
+If no specific voice instruction is given, default to: "Clean and condense while preserving all essential information."
+
+Output ONLY the transformed text, ready to be copied.
 """
 
 # ───────────────────────── HELPERS ─────────────────────────
@@ -831,7 +840,7 @@ class VoiceTool(QMainWindow):
         elif mode == "cleanup":
             self.focus_widget.color = QColor(self.CLEANUP_COLOR)
             self.status_text.setStyleSheet(f"color: {self.CLEANUP_COLOR};")
-            self.status_text.setText("Cleanup")
+            self.status_text.setText("🎤 Speak...")
 
         self.focus_widget.update()
         
@@ -894,11 +903,12 @@ class VoiceTool(QMainWindow):
             
             # Get clipboard content
             clip = grab_clipboard()
-            
-            # Delete the trigger keys from the input field
-            kb = keyboard.Controller()
-            for _ in range(4):  # Delete backtick + number
-                kb.press(keyboard.Key.backspace); kb.release(keyboard.Key.backspace)
+
+            # Delete the trigger keys from the input field (except for cleanup mode)
+            if self.mode != "cleanup":
+                kb = keyboard.Controller()
+                for _ in range(4):  # Delete backtick + number
+                    kb.press(keyboard.Key.backspace); kb.release(keyboard.Key.backspace)
 
             if self.mode == "dict":          # simple dictation branch
                 self._paste(question)  # paste after deleting trigger keys
@@ -917,10 +927,14 @@ class VoiceTool(QMainWindow):
             self.status_text.setText("Querying AI services...")
             answer = get_ai_response(sys_prompt, build_messages(clip, question))
 
-            if self.mode == "text" or self.mode == "cleanup":
-                # For text and cleanup modes, paste the answer
+            if self.mode == "text":
+                # For text mode, paste the answer
                 self._paste(answer)    # paste after deleting trigger keys
                 self.status_text.setText("Done.")
+            elif self.mode == "cleanup":
+                # For cleanup mode, only copy to clipboard (no auto-paste)
+                pyperclip.copy(answer)
+                self.status_text.setText("→ Clipboard")
             else:  # spoken mode
                 # For spoken mode, just copy to clipboard and speak
                 pyperclip.copy(answer)

@@ -215,12 +215,18 @@ def main():
     print("✅ TESTS COMPLETE")
     print("="*70)
 
-    print("\n📝 To test in the actual app:")
+    print("\n📝 To test in the actual app (Updated Workflow):")
     print("  1. Start voice_shortcuts.py")
-    print("  2. Copy some messy text to clipboard")
-    print("  3. Press ` + 4")
-    print("  4. Say 'focus on key points' or just press stop immediately")
-    print("  5. Cleaned text will be pasted")
+    print("  2. Select and COPY text to clipboard (Cmd+C)")
+    print("  3. Press ` + 4 (starts recording, shows '🎤 Speak...')")
+    print("  4. Say your instruction: 'focus on errors' / 'make bullet points' / etc.")
+    print("  5. Press ` + 4 again (stops recording)")
+    print("  6. App processes and copies result to clipboard (shows '→ Clipboard')")
+    print("  7. Paste result wherever you want (Cmd+V)")
+    print("\n💡 Key difference from other modes:")
+    print("  - Cleanup mode does NOT auto-paste")
+    print("  - Voice instruction drives the transformation")
+    print("  - Trigger keys (` + 4) stay in the field")
 
 if __name__ == "__main__":
     main()

@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a voice-controlled dictation and AI assistant tool for macOS (with Windows support). The core application is **voice_shortcuts.py**, a PyQt5 GUI that provides three modes of operation:
+This is a voice-controlled dictation and AI assistant tool for macOS (with Windows support). The core application is **voice_shortcuts.py**, a PyQt5 GUI that provides four modes of operation:
 1. **Writing Mode** (` + 1): AI-assisted text composition with clipboard context
 2. **Speaking Mode** (` + 2): Verbal Q&A with spoken responses
 3. **Dictation Mode** (` + 3): Pure speech-to-text transcription
+4. **Cleanup Mode** (` + 4): Transform clipboard text via voice instruction (copies to clipboard only)
 
 ## Architecture
 
@@ -18,7 +19,7 @@ This is a voice-controlled dictation and AI assistant tool for macOS (with Windo
 - **Audio Pipeline** (lines 809-841): sounddevice recording → numpy frames → WAV export
 - **Transcription** (lines 357-472): ElevenLabs primary, Gemini fallback
 - **LLM Processing** (lines 183-355): Gemini→Claude→OpenAI fallback chain with 5-second timeouts
-- **Hotkey System** (lines 760-778): pynput global keyboard listener for ` or > + 1/2/3 combos
+- **Hotkey System** (lines 760-778): pynput global keyboard listener for ` or > + 1/2/3/4 combos
 
 ### Key Design Patterns
 
@@ -27,14 +28,21 @@ This is a voice-controlled dictation and AI assistant tool for macOS (with Windo
    - LLM responses: Gemini (flash) → Claude (3.7-sonnet) → OpenAI (gpt-4o)
    - Timeout: 5 seconds per API call (configurable at line 331)
 
-2. **Mode-Specific Prompts**: System prompts defined at lines 93-139
+2. **Mode-Specific Prompts**: System prompts defined at lines 93-169
    - `PROMPT_TEXT`: Direct writing assistant (no meta-commentary)
    - `PROMPT_SPOKEN`: Verbal Q&A with detail levels (short/medium/detailed)
-   - Both support "ignore" prefix to bypass clipboard context
+   - `PROMPT_CLEANUP`: Transform text via voice instruction (lines 142-169)
+   - Text/Spoken modes support "ignore" prefix to bypass clipboard context
 
-3. **Clipboard Integration**: Multimodal clipboard grabbing (lines 142-159)
+3. **Clipboard Integration**: Multimodal clipboard grabbing (lines 172-189)
    - Handles both text and base64-encoded images
    - Automatically included in LLM context unless "ignore" keyword used
+
+4. **Mode-Specific Output Behavior** (lines 920-934):
+   - **Text mode**: Deletes trigger keys, pastes result automatically
+   - **Spoken mode**: Deletes trigger keys, copies to clipboard, speaks result
+   - **Dictation mode**: Deletes trigger keys, pastes transcription directly
+   - **Cleanup mode**: Keeps trigger keys, copies to clipboard only (no auto-paste)
 
 ## Development Commands
 
@@ -137,14 +145,38 @@ Edit system prompts at lines 93-139:
 - `API_TIMEOUT = 5` seconds per LLM call (line 331)
 - `TRANSCRIPTION_TIMEOUT = 15` seconds (line 54, currently unused)
 
+## Cleanup Mode Workflow (` + 4)
+
+**Unique Characteristics**:
+- Voice instruction drives transformation (not just context)
+- No auto-paste (clipboard-only output)
+- Trigger keys remain in text field
+- Status shows "🎤 Speak..." → "Processing..." → "→ Clipboard"
+
+**Typical Workflow**:
+1. User selects and copies text manually (Cmd+C)
+2. User presses `` ` + 4 `` → App starts recording
+3. User speaks instruction: "focus on errors" / "make bullet points" / "remove debug logs"
+4. User presses `` ` + 4 `` again → App stops recording
+5. App sends clipboard + voice instruction to LLM with `PROMPT_CLEANUP`
+6. Result copied to clipboard (status shows "→ Clipboard")
+7. User manually pastes wherever needed (Cmd+V)
+
+**Common Use Cases**:
+- Clean terminal output before pasting into chat
+- Convert verbose text to bullet points
+- Extract only error messages from logs
+- Simplify complex explanations
+- Remove debug noise for token efficiency
+
 ## Testing Notes
 
-- No automated tests exist
+- Automated test: `python3 test_cleanup_mode.py`
 - Manual testing requires:
   1. Valid API keys in `.env`
   2. Working microphone
   3. macOS accessibility permissions for global hotkeys
-  4. Test all three modes separately
+  4. Test all four modes separately
   5. Verify fallback behavior by temporarily invalidating API keys
 
 ## Platform-Specific Behavior
@@ -174,12 +206,14 @@ Replace backtick/less-than at line 78:
 TRIGGER_KEYS = [keyboard.KeyCode.from_char('YOUR_KEY_HERE')]
 ```
 
-### Add Fourth Mode
-1. Add combo definition after line 91
-2. Create prompt constant after line 139
-3. Add color constant after line 581
-4. Extend `_toggle()` switch at lines 791-802
-5. Update `_toggle_settings()` menu at lines 652-710
+### Add Fifth Mode
+1. Add combo definition after line 92 (e.g., `COMBO_NEWMODE = make_combo('5')`)
+2. Create prompt constant after line 169
+3. Add color constant after line 603
+4. Extend `_toggle()` switch at lines 827-843
+5. Update `_toggle_settings()` menu at lines 692-707
+6. Update mode cycling in FocusCircle at line 565
+7. Add output logic in `_process()` at lines 920-934
 
 ### Disable Image Support
 Comment out image handling in `grab_clipboard()` at lines 145-154
