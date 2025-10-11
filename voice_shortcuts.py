@@ -355,32 +355,62 @@ def call_with_timeout(func, *args, timeout=5):
     
     return result
 
-# Fallback mechanism
+# Fallback mechanism (general: Gemini → Claude → OpenAI)
 def get_ai_response(sys_prompt, msgs):
     # Set timeout in seconds
     API_TIMEOUT = 5
-    
+
     # Try Gemini first
     print("\n--- Trying Gemini API ---")
     response, provider = call_with_timeout(ask_gemini, sys_prompt, msgs, timeout=API_TIMEOUT)
     if response:
         print(f"Using {provider.upper()} API response")
         return response
-    
+
     # If Gemini fails, try Claude
     print(f"\n--- Gemini API failed ({provider}), trying Claude... ---")
     response, provider = call_with_timeout(ask_claude, sys_prompt, msgs, timeout=API_TIMEOUT)
     if response:
         print(f"Using {provider.upper()} API response")
         return response
-    
+
     # If Claude fails, try OpenAI
     print(f"\n--- Claude API failed ({provider}), trying OpenAI... ---")
     response, provider = call_with_timeout(ask_openai, sys_prompt, msgs, timeout=API_TIMEOUT)
     if response:
         print(f"Using {provider.upper()} API response")
         return response
-    
+
+    # If all APIs fail, return error message
+    return "Sorry, all AI providers are currently unavailable. Please try again later."
+
+# Cleanup mode specific fallback (Claude → Gemini → OpenAI)
+# Claude 3.5/4.5 Sonnet is more reliable and better at following cleanup instructions
+def get_ai_response_cleanup(sys_prompt, msgs):
+    # Set longer timeout for cleanup mode (complex transformations)
+    API_TIMEOUT = 10
+
+    # Try Claude first (best for structured transformations)
+    print("\n--- Trying Claude API (Primary for Cleanup) ---")
+    response, provider = call_with_timeout(ask_claude, sys_prompt, msgs, timeout=API_TIMEOUT)
+    if response:
+        print(f"✅ Using {provider.upper()} API response")
+        return response
+
+    # If Claude fails, try Gemini
+    print(f"\n--- Claude API failed ({provider}), trying Gemini... ---")
+    response, provider = call_with_timeout(ask_gemini, sys_prompt, msgs, timeout=API_TIMEOUT)
+    if response:
+        print(f"✅ Using {provider.upper()} API response")
+        return response
+
+    # If Gemini fails, try OpenAI
+    print(f"\n--- Gemini API failed ({provider}), trying OpenAI... ---")
+    response, provider = call_with_timeout(ask_openai, sys_prompt, msgs, timeout=API_TIMEOUT)
+    if response:
+        print(f"✅ Using {provider.upper()} API response")
+        return response
+
     # If all APIs fail, return error message
     return "Sorry, all AI providers are currently unavailable. Please try again later."
 
@@ -925,7 +955,12 @@ class VoiceTool(QMainWindow):
                 sys_prompt = PROMPT_SPOKEN
 
             self.status_text.setText("Querying AI services...")
-            answer = get_ai_response(sys_prompt, build_messages(clip, question))
+
+            # Use dedicated cleanup fallback for cleanup mode (Claude primary)
+            if self.mode == "cleanup":
+                answer = get_ai_response_cleanup(sys_prompt, build_messages(clip, question))
+            else:
+                answer = get_ai_response(sys_prompt, build_messages(clip, question))
 
             if self.mode == "text":
                 # For text mode, paste the answer

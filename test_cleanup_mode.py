@@ -170,46 +170,71 @@ def main():
         print("\n❌ No API keys found! Please set up .env file")
         return
 
-    # Test 1: Terminal logs cleanup
+    # Test 1: Terminal logs cleanup (try Claude first, matching app behavior)
     print("\n" + "="*70)
-    print("TEST 1: Cleaning Terminal Logs")
+    print("TEST 1: Cleaning Terminal Logs (Claude Primary)")
     print("="*70)
     print("\n📄 Original text (first 200 chars):")
     print(TEST_TEXT_1[:200] + "...")
 
-    result = test_gemini_cleanup(TEST_TEXT_1, "focus on the error and key events")
+    # Try Claude first (matches cleanup mode fallback order)
+    result = test_claude_cleanup(TEST_TEXT_1, "focus on the error and key events")
+
+    # If Claude fails, try Gemini as fallback
+    if not result:
+        print("\n🔄 Claude failed, trying Gemini fallback...")
+        result = test_gemini_cleanup(TEST_TEXT_1, "focus on the error and key events")
     if result:
         print("\n✨ Cleaned result:")
         print("-"*70)
         print(result)
         print("-"*70)
 
-    # Test 2: Verbose prose cleanup
+    # Test 2: Verbose prose cleanup (Claude first)
     print("\n" + "="*70)
-    print("TEST 2: Condensing Verbose Text")
+    print("TEST 2: Condensing Verbose Text (Claude Primary)")
     print("="*70)
     print("\n📄 Original text (first 200 chars):")
     print(TEST_TEXT_2[:200] + "...")
 
-    result = test_gemini_cleanup(TEST_TEXT_2, "make it very concise, bullet points")
+    # Try Claude first
+    result = test_claude_cleanup(TEST_TEXT_2, "make it very concise, bullet points")
+
+    # Fallback to Gemini if Claude fails
+    if not result:
+        print("\n🔄 Claude failed, trying Gemini fallback...")
+        result = test_gemini_cleanup(TEST_TEXT_2, "make it very concise, bullet points")
+
     if result:
         print("\n✨ Cleaned result:")
         print("-"*70)
         print(result)
         print("-"*70)
 
-    # Test 3: Fallback chain (if Gemini is not available)
+    # Test 3: Fallback chain information
     print("\n" + "="*70)
-    print("TEST 3: Testing Fallback Chain")
+    print("TEST 3: Fallback Chain Configuration")
     print("="*70)
 
-    if not has_gemini and has_claude:
-        print("Testing Claude as fallback...")
-        result = test_claude_cleanup(TEST_TEXT_1)
-        if result:
-            print("\n✅ Claude fallback works!")
-    elif has_gemini:
-        print("✅ Gemini is primary provider")
+    print("\n📊 Cleanup Mode Fallback Order:")
+    print("  1️⃣  Claude 3.5/4.5 Sonnet (PRIMARY) - 10s timeout")
+    print("  2️⃣  Gemini 2.0 Flash (FALLBACK #1) - 10s timeout")
+    print("  3️⃣  OpenAI GPT-4o (FALLBACK #2) - 10s timeout")
+    print("\n💡 Benefits:")
+    print("  • Claude is more reliable and better at structured transformations")
+    print("  • Longer timeout (10s vs 5s) for complex cleanup tasks")
+    print("  • Better instruction following for voice-driven transformations")
+
+    if has_claude:
+        print("\n✅ Claude API is available (primary provider)")
+    else:
+        print("\n⚠️  Claude API not configured (will use Gemini/OpenAI)")
+
+    if has_gemini:
+        print("✅ Gemini API is available (fallback)")
+
+    if has_openai:
+        print("✅ OpenAI API is available (fallback)")
 
     print("\n" + "="*70)
     print("✅ TESTS COMPLETE")

@@ -25,8 +25,10 @@ This is a voice-controlled dictation and AI assistant tool for macOS (with Windo
 
 1. **Fallback Chain Architecture**: Every AI operation tries multiple providers sequentially
    - Transcription: ElevenLabs → Gemini
-   - LLM responses: Gemini (flash) → Claude (3.7-sonnet) → OpenAI (gpt-4o)
-   - Timeout: 5 seconds per API call (configurable at line 331)
+   - LLM responses (general): Gemini (flash) → Claude (3.7-sonnet) → OpenAI (gpt-4o)
+   - **Cleanup mode**: Claude (3.5/4.5 sonnet) → Gemini (flash) → OpenAI (gpt-4o)
+   - Timeout: 5 seconds (general), 10 seconds (cleanup mode)
+   - See `get_ai_response()` (line 359) and `get_ai_response_cleanup()` (line 389)
 
 2. **Mode-Specific Prompts**: System prompts defined at lines 93-169
    - `PROMPT_TEXT`: Direct writing assistant (no meta-commentary)
@@ -152,6 +154,8 @@ Edit system prompts at lines 93-139:
 - No auto-paste (clipboard-only output)
 - Trigger keys remain in text field
 - Status shows "🎤 Speak..." → "Processing..." → "→ Clipboard"
+- **Dedicated fallback chain**: Claude → Gemini → OpenAI (more reliable than other modes)
+- **Longer timeout**: 10 seconds per API (vs 5 seconds in other modes)
 
 **Typical Workflow**:
 1. User selects and copies text manually (Cmd+C)
