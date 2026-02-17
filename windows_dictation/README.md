@@ -12,17 +12,14 @@ Download from [python.org](https://www.python.org/downloads/). Check "Add to PAT
 pip install -r requirements.txt
 ```
 
-### 3. Set up API key
-Create a file called `.env` in this folder with one line:
-```
-OPENAI_API_KEY=sk-your-key-here
-```
-Get your key from [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
-
-### 4. Run
+### 3. Run
 ```
 python dictation_app.py
 ```
+
+On first launch, a dialog will ask for your **OpenAI API key**. Get one from [platform.openai.com/api-keys](https://platform.openai.com/api-keys). The key is saved locally in `dictation_config.json` and remembered for future launches.
+
+You can change the key later via the system tray icon (right-click > Change API Key).
 
 ## Usage
 
@@ -37,7 +34,7 @@ The small floating bar shows the current state:
 - **Yellow dot** = transcribing
 - **Green dot** = done, text pasted
 
-Drag the bar anywhere on screen. Right-click the tray icon to quit.
+Drag the bar anywhere on screen. Right-click the tray icon to quit or change API key.
 
 ## Build Standalone .exe
 
@@ -46,7 +43,7 @@ Double-click `build_exe.bat` or run:
 pyinstaller --onefile --windowed --name DictationTool dictation_app.py
 ```
 
-The `.exe` will be in `dist/`. Place the `.env` file next to it.
+The `.exe` will be in `dist/`. Share it with anyone -- they just double-click and enter their API key on first run.
 
 ## Troubleshooting
 

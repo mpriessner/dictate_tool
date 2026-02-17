@@ -4,11 +4,9 @@ Windows Dictation Tool
 Press Ctrl+Shift+D to start/stop recording. Transcribed text is pasted at cursor.
 """
 
-from dotenv import load_dotenv
-load_dotenv()
-
 import os
 import sys
+import json
 import time
 import tempfile
 import wave
@@ -22,17 +20,115 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont, QColor, QPainter, QPen, QBrush, QIcon
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QLabel, QWidget,
-    QHBoxLayout, QFrame, QDesktopWidget, QSystemTrayIcon, QMenu, QAction
+    QHBoxLayout, QVBoxLayout, QFrame, QDesktopWidget,
+    QSystemTrayIcon, QMenu, QAction,
+    QDialog, QLineEdit, QPushButton, QMessageBox
 )
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+APP_NAME = "DictationTool"
 
-if not OPENAI_API_KEY:
-    print("WARNING: OPENAI_API_KEY not set. Add it to .env file.")
+
+def _config_path() -> str:
+    """Return path to the persistent config file next to the executable/script."""
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, "dictation_config.json")
+
+
+def load_api_key() -> str:
+    """Load API key from config file, then fall back to environment."""
+    path = _config_path()
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+                key = data.get("openai_api_key", "")
+                if key:
+                    return key
+        except Exception:
+            pass
+    return os.getenv("OPENAI_API_KEY", "")
+
+
+def save_api_key(key: str):
+    """Save API key to config file."""
+    path = _config_path()
+    data = {}
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+        except Exception:
+            pass
+    data["openai_api_key"] = key
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+# ── API Key Dialog ─────────────────────────────────────────────────────────
+
+class ApiKeyDialog(QDialog):
+    """Dialog that asks user for their OpenAI API key on first launch."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Dictation Tool - Setup")
+        self.setFixedSize(460, 200)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(24, 20, 24, 20)
+
+        title = QLabel("Enter your OpenAI API Key")
+        title.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        layout.addWidget(title)
+
+        hint = QLabel("Get your key from platform.openai.com/api-keys\nIt starts with sk-")
+        hint.setFont(QFont("Segoe UI", 9))
+        hint.setStyleSheet("color: #666;")
+        layout.addWidget(hint)
+
+        self.key_input = QLineEdit()
+        self.key_input.setPlaceholderText("sk-...")
+        self.key_input.setEchoMode(QLineEdit.Password)
+        self.key_input.setFont(QFont("Consolas", 10))
+        self.key_input.setMinimumHeight(32)
+        layout.addWidget(self.key_input)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        self.save_btn = QPushButton("Save and Start")
+        self.save_btn.setFont(QFont("Segoe UI", 10))
+        self.save_btn.setMinimumHeight(32)
+        self.save_btn.setMinimumWidth(120)
+        self.save_btn.clicked.connect(self._on_save)
+        btn_row.addWidget(self.save_btn)
+
+        layout.addLayout(btn_row)
+
+        self.api_key = ""
+
+    def _on_save(self):
+        key = self.key_input.text().strip()
+        if not key:
+            QMessageBox.warning(self, "Missing Key", "Please enter your API key.")
+            return
+        if not key.startswith("sk-"):
+            QMessageBox.warning(self, "Invalid Key", "OpenAI API keys start with 'sk-'.")
+            return
+        self.api_key = key
+        self.accept()
+
+
+OPENAI_API_KEY = ""
 
 
 # ── Transcription ───────────────────────────────────────────────────────────
@@ -379,29 +475,44 @@ class DictationWindow(QMainWindow):
 # ── Entry point ────────────────────────────────────────────────────────────
 
 def main():
-    if not OPENAI_API_KEY:
-        print("=" * 50)
-        print("ERROR: OPENAI_API_KEY not found!")
-        print("")
-        print("Create a .env file with:")
-        print("  OPENAI_API_KEY=sk-your-key-here")
-        print("")
-        print("Or set the environment variable directly.")
-        print("=" * 50)
-        sys.exit(1)
+    global OPENAI_API_KEY
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
+    # Load saved key or prompt user
+    OPENAI_API_KEY = load_api_key()
+
+    if not OPENAI_API_KEY:
+        dialog = ApiKeyDialog()
+        if dialog.exec_() != QDialog.Accepted:
+            sys.exit(0)
+        OPENAI_API_KEY = dialog.api_key
+        save_api_key(OPENAI_API_KEY)
+        print("API key saved.")
+
     window = DictationWindow()
     window.show()
 
-    # System tray for easy exit
+    # System tray
     tray = QSystemTrayIcon()
     tray_menu = QMenu()
+
     show_action = QAction("Show")
     show_action.triggered.connect(window.show)
     tray_menu.addAction(show_action)
+
+    change_key_action = QAction("Change API Key...")
+    def _change_key():
+        dialog = ApiKeyDialog()
+        if dialog.exec_() == QDialog.Accepted:
+            global OPENAI_API_KEY
+            OPENAI_API_KEY = dialog.api_key
+            save_api_key(OPENAI_API_KEY)
+    change_key_action.triggered.connect(_change_key)
+    tray_menu.addAction(change_key_action)
+
+    tray_menu.addSeparator()
 
     quit_action = QAction("Quit")
     quit_action.triggered.connect(app.quit)
